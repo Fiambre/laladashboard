@@ -9,7 +9,7 @@ function installMod(moduleID) {
   const btn = document.querySelector(`#mod-${moduleID} .btn-primary`);
   if (btn) { btn.textContent = 'Instalando…'; btn.disabled = true; }
 
-  fetch(`/api/modules/${moduleID}/install`, { method: 'POST' })
+  fetch(`/api/modules/${moduleID}/install`, { method: 'POST', headers: { 'X-Requested-With': 'laladashboard' } })
     .then(r => r.json())
     .then(data => {
       if (data.status === 'installed') {
@@ -30,7 +30,7 @@ function installMod(moduleID) {
 
 function uninstallMod(moduleID) {
   if (!confirm('¿Desinstalar este módulo?')) return;
-  fetch(`/api/modules/${moduleID}/uninstall`, { method: 'DELETE' })
+  fetch(`/api/modules/${moduleID}/uninstall`, { method: 'DELETE', headers: { 'X-Requested-With': 'laladashboard' } })
     .then(r => r.json())
     .then(data => {
       showToast('Módulo eliminado — reinicia para desactivar', true);

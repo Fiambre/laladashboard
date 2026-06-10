@@ -7,8 +7,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
+
+var validID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 const RegistryURL = "https://raw.githubusercontent.com/Fiambre/laladashboard-modules/main/registry.json"
 
@@ -48,7 +52,16 @@ func FetchRegistry() (Registry, error) {
 
 // InstallModule downloads the manifest and wasm for a remote module into modulesDir.
 func InstallModule(mod RemoteModule, modulesDir string) error {
+	if !validID.MatchString(mod.ID) {
+		return fmt.Errorf("invalid module id: %q", mod.ID)
+	}
 	dest := filepath.Join(modulesDir, mod.ID)
+	// Guard against path traversal after Join
+	base, _ := filepath.Abs(modulesDir)
+	abs, _ := filepath.Abs(dest)
+	if !strings.HasPrefix(abs, base+string(filepath.Separator)) {
+		return fmt.Errorf("path traversal detected for module id: %q", mod.ID)
+	}
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}

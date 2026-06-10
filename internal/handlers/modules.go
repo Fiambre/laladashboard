@@ -4,13 +4,34 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/a-h/templ"
+	"github.com/go-chi/chi/v5"
 	"github.com/rfguerreroa/laladashboard/internal/moduleloader"
 	"github.com/rfguerreroa/laladashboard/internal/registry"
 	"github.com/rfguerreroa/laladashboard/templates"
 )
+
+var validModuleID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
+
+func safeModuleID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := chi.URLParam(r, "moduleID")
+	if !validModuleID.MatchString(id) {
+		http.Error(w, "invalid module id", http.StatusBadRequest)
+		return "", false
+	}
+	return id, true
+}
+
+// requireLocalOrigin rejects requests that don't come from the dashboard itself (basic CSRF guard).
+func requireLocalOrigin(w http.ResponseWriter, r *http.Request) bool {
+	if r.Header.Get("X-Requested-With") != "laladashboard" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
 
 const modulesDir = "modules"
 
@@ -28,8 +49,13 @@ func ModuleStore(reg *registry.Registry) http.HandlerFunc {
 
 func InstallModule(loader *moduleloader.Loader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		moduleID := chi.URLParam(r, "moduleID")
-
+		if !requireLocalOrigin(w, r) {
+			return
+		}
+		moduleID, ok := safeModuleID(w, r)
+		if !ok {
+			return
+		}
 		remote, err := moduleloader.FetchRegistry()
 		if err != nil {
 			http.Error(w, "cannot fetch registry: "+err.Error(), http.StatusServiceUnavailable)
@@ -71,7 +97,13 @@ func InstallModule(loader *moduleloader.Loader) http.HandlerFunc {
 
 func UninstallModule(loader *moduleloader.Loader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		moduleID := chi.URLParam(r, "moduleID")
+		if !requireLocalOrigin(w, r) {
+			return
+		}
+		moduleID, ok := safeModuleID(w, r)
+		if !ok {
+			return
+		}
 		if err := moduleloader.UninstallModule(moduleID, modulesDir); err != nil {
 			http.Error(w, "uninstall failed: "+err.Error(), http.StatusInternalServerError)
 			return
