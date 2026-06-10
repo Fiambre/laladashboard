@@ -16,7 +16,7 @@ import (
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
-const RegistryURL = "https://raw.githubusercontent.com/Fiambre/laladashboard-modules/main/registry.json"
+const RegistryURL = "https://cdn.jsdelivr.net/gh/Fiambre/laladashboard-modules@main/registry.json"
 
 // in-memory cache for the remote registry
 var (
