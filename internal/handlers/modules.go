@@ -37,11 +37,7 @@ const modulesDir = "modules"
 
 func ModuleStore(reg *registry.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		remote, err := moduleloader.FetchRegistry()
-		if err != nil {
-			// Render page with error, don't fail hard
-			remote = moduleloader.Registry{}
-		}
+		remote, err := moduleloader.GetRegistry()
 		installed := moduleloader.InstalledIDs(modulesDir)
 		templ.Handler(templates.ModuleStore(remote, installed, err)).ServeHTTP(w, r)
 	}
@@ -56,7 +52,7 @@ func InstallModule(loader *moduleloader.Loader) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		remote, err := moduleloader.FetchRegistry()
+		remote, err := moduleloader.GetRegistry()
 		if err != nil {
 			http.Error(w, "cannot fetch registry: "+err.Error(), http.StatusServiceUnavailable)
 			return

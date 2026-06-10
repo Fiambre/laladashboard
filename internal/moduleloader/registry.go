@@ -4,17 +4,68 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 const RegistryURL = "https://raw.githubusercontent.com/Fiambre/laladashboard-modules/main/registry.json"
+
+// in-memory cache for the remote registry
+var (
+	regCache   Registry
+	regErr     error
+	regCacheAt time.Time
+	regMu      sync.RWMutex
+	regTTL     = 10 * time.Minute
+)
+
+// WarmCache fetches the remote registry in the background at startup so the
+// first visit to /modules is instant.
+func WarmCache() {
+	go func() {
+		reg, err := FetchRegistry()
+		regMu.Lock()
+		regCache, regErr, regCacheAt = reg, err, time.Now()
+		regMu.Unlock()
+		if err != nil {
+			log.Printf("[registry] background fetch failed: %v", err)
+		} else {
+			log.Printf("[registry] cached %d modules", len(reg.Modules))
+		}
+	}()
+}
+
+// GetRegistry returns the registry from cache when fresh, fetches otherwise.
+// On fetch error it falls back to stale cache so the page stays usable.
+func GetRegistry() (Registry, error) {
+	regMu.RLock()
+	fresh := !regCacheAt.IsZero() && time.Since(regCacheAt) < regTTL
+	cached, cachedErr, hasModules := regCache, regErr, len(regCache.Modules) > 0
+	regMu.RUnlock()
+
+	if fresh {
+		return cached, cachedErr
+	}
+
+	reg, err := FetchRegistry()
+	regMu.Lock()
+	regCache, regErr, regCacheAt = reg, err, time.Now()
+	regMu.Unlock()
+
+	if err != nil && hasModules {
+		// Return stale cache rather than a blank error page
+		return cached, nil
+	}
+	return reg, err
+}
 
 type RemoteModule struct {
 	ID          string   `json:"id"`
@@ -34,7 +85,7 @@ type Registry struct {
 }
 
 func FetchRegistry() (Registry, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(RegistryURL)
 	if err != nil {
 		return Registry{}, fmt.Errorf("cannot fetch registry: %w", err)

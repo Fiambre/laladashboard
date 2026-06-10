@@ -36,6 +36,9 @@ func main() {
 		log.Printf("warning: module loader error: %v", err)
 	}
 
+	// Pre-fetch module registry in background so /modules loads instantly
+	moduleloader.WarmCache()
+
 	reg := registry.Global()
 	handler := server.New(store, reg, loader, staticFS)
 
