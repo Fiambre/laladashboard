@@ -1,0 +1,47 @@
+{
+  "version": "1",
+  "theme": "dark",
+  "columns": 12,
+  "widgets": [
+    {
+      "id": "clock-default",
+      "type_id": "clock",
+      "title": "Reloj",
+      "enabled": true,
+      "settings": {
+        "format": "24h",
+        "show_date": "true",
+        "show_seconds": "true",
+        "timezone": "America/Santiago",
+        "poll_seconds": "1"
+      },
+      "grid": { "x": 0, "y": 0, "w": 4, "h": 2 }
+    },
+    {
+      "id": "weather-default",
+      "type_id": "weather",
+      "title": "Clima",
+      "enabled": false,
+      "settings": {
+        "api_key": "YOUR_OPENWEATHERMAP_API_KEY",
+        "city": "Santiago,CL",
+        "units": "metric",
+        "poll_seconds": "300"
+      },
+      "grid": { "x": 8, "y": 0, "w": 4, "h": 3 }
+    },
+    {
+      "id": "rss-default",
+      "type_id": "rss",
+      "title": "Noticias",
+      "enabled": false,
+      "settings": {
+        "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada",
+        "max_items": "1",
+        "style": "ticker",
+        "poll_seconds": "900"
+      },
+      "grid": { "x": 4, "y": 8, "w": 4, "h": 2 }
+    }
+  ]
+}

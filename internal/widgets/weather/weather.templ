@@ -1,0 +1,34 @@
+package weather
+
+templ weatherContent(data WeatherData) {
+	<div class="weather-widget">
+		<div class="weather-location">{ data.City }</div>
+		<div class="weather-meta-row">
+			if data.WindStr != "" {
+				<span>{ data.WindIcon } { data.WindStr } m/s</span>
+			}
+		</div>
+		<div class="weather-current">
+			<div class="weather-temp-large">{ data.TempStr }°</div>
+			<div class="weather-icon-large">{ data.Icon }</div>
+		</div>
+		<div class="weather-feels">Feels like { data.FeelsLikeStr }°</div>
+		if len(data.Forecast) > 0 {
+			<div class="weather-forecast">
+				<div class="weather-forecast-title">{ data.ForecastTitle }</div>
+				for _, f := range data.Forecast {
+					<div class="weather-forecast-row">
+						<span class="forecast-day">{ f.Day }</span>
+						<span class="forecast-icon">{ f.Icon }</span>
+						<span class="forecast-high">{ f.High }°</span>
+						<span class="forecast-low forecast-low-val">{ f.Low }°</span>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ weatherError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}

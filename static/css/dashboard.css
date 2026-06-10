@@ -1,0 +1,356 @@
+/* ── Variables ── */
+:root {
+  --bg: #000000;
+  --text: #ffffff;
+  --text-dim: rgba(255,255,255,0.5);
+  --text-xdim: rgba(255,255,255,0.25);
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --surface: #111111;
+  --surface2: #1a1a1a;
+  --border: #2a2a2a;
+  --radius: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.8);
+  --font: 'Roboto', 'Segoe UI', system-ui, sans-serif;
+  --font-thin: 100;
+  --font-light: 300;
+}
+
+[data-theme="light"] {
+  --bg: #f8f9fa;
+  --text: #111111;
+  --text-dim: rgba(0,0,0,0.5);
+  --text-xdim: rgba(0,0,0,0.25);
+  --surface: #ffffff;
+  --surface2: #f1f3f5;
+  --border: #dee2e6;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+a { color: var(--text); text-decoration: none; }
+
+/* ── Dashboard fullscreen layout ── */
+.dashboard-page {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-areas:
+    "top-left    top-center    top-right"
+    "mid-left    mid-center    mid-right"
+    "bot-left    bot-center    bot-right";
+  padding: 40px;
+  gap: 0;
+}
+
+.region { display: flex; flex-direction: column; gap: 24px; }
+
+.region-top-left    { grid-area: top-left;    justify-content: flex-start; align-items: flex-start; }
+.region-top-center  { grid-area: top-center;  justify-content: flex-start; align-items: center; }
+.region-top-right   { grid-area: top-right;   justify-content: flex-start; align-items: flex-end; text-align: right; }
+.region-mid-left    { grid-area: mid-left;    justify-content: center;     align-items: flex-start; }
+.region-mid-center  { grid-area: mid-center;  justify-content: center;     align-items: center;     text-align: center; }
+.region-mid-right   { grid-area: mid-right;   justify-content: center;     align-items: flex-end;   text-align: right; }
+.region-bot-left    { grid-area: bot-left;    justify-content: flex-end;   align-items: flex-start; }
+.region-bot-center  { grid-area: bot-center;  justify-content: flex-end;   align-items: center;     text-align: center; }
+.region-bot-right   { grid-area: bot-right;   justify-content: flex-end;   align-items: flex-end;   text-align: right; }
+
+/* ── Config link — shown on hover ── */
+.config-link {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: rgba(255,255,255,0.1);
+  color: var(--text-dim);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  z-index: 10;
+}
+body:hover .config-link { opacity: 1; }
+
+/* ── Clock Widget ── */
+.clock-widget {}
+.clock-date {
+  font-size: 1.1rem;
+  font-weight: var(--font-light);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.clock-time-row {
+  display: flex;
+  align-items: flex-start;
+  line-height: 1;
+}
+.clock-hours-minutes {
+  font-size: 5rem;
+  font-weight: var(--font-thin);
+  letter-spacing: -2px;
+  line-height: 1;
+}
+.clock-seconds {
+  font-size: 2rem;
+  font-weight: var(--font-thin);
+  margin-top: 0.4rem;
+  margin-left: 4px;
+  color: var(--text-dim);
+}
+
+/* ── Weather Widget ── */
+.weather-widget {}
+.weather-location {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.weather-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-direction: row-reverse; /* icon on left when right-aligned */
+  justify-content: flex-end;
+}
+.region-top-right .weather-current {
+  flex-direction: row;
+  justify-content: flex-end;
+}
+.weather-icon-large { font-size: 2.5rem; line-height: 1; }
+.weather-temp-large {
+  font-size: 4rem;
+  font-weight: var(--font-thin);
+  line-height: 1;
+}
+.weather-feels {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.weather-meta-row {
+  display: flex;
+  gap: 16px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+.region-top-right .weather-meta-row { justify-content: flex-end; }
+
+/* ── RSS / Ticker Widget ── */
+.rss-widget {}
+.rss-source {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.rss-headline {
+  font-size: 1.4rem;
+  font-weight: var(--font-light);
+}
+.rss-list-minimal { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.rss-item-minimal {
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.rss-item-minimal:last-child { border-bottom: none; }
+.rss-item-minimal a { color: var(--text); }
+.rss-item-minimal a:hover { color: var(--text-dim); }
+.rss-item-date { font-size: 0.72rem; color: var(--text-xdim); margin-top: 2px; }
+
+/* ── Iframe Widget ── */
+.iframe-widget { width: 100%; height: 100%; min-height: 300px; }
+.iframe-widget iframe { width: 100%; height: 100%; min-height: 300px; border: none; }
+
+/* ── Weather forecast section ── */
+.weather-forecast { margin-top: 12px; }
+.weather-forecast-title {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.weather-forecast-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  padding: 2px 0;
+}
+.region-top-right .weather-forecast-row { justify-content: flex-end; }
+.forecast-day { min-width: 40px; color: var(--text-dim); }
+.forecast-icon { min-width: 24px; }
+.forecast-high { font-weight: 400; min-width: 40px; }
+.forecast-low-val { color: var(--text-dim); }
+
+/* ── Generic widget error ── */
+.widget-error { font-size: 0.82rem; color: rgba(255,80,80,0.7); }
+
+/* ══════════════════════════════════════════
+   CONFIG PAGE — keep cards/borders there
+   ══════════════════════════════════════════ */
+.config-page { overflow: auto; }
+.config-page body { overflow: auto; }
+
+/* ── Topbar (config only) ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-brand { font-size: 1rem; font-weight: 600; color: var(--text); }
+.topbar-link {
+  font-size: 0.88rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  color: var(--text-dim);
+  transition: background 0.15s, color 0.15s;
+}
+.topbar-link:hover { background: var(--surface2); color: var(--text); }
+.topbar-actions { margin-left: auto; display: flex; gap: 0.5rem; }
+
+/* ── Widget Card (config page only) ── */
+.widget-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: grab;
+}
+.widget-header:active { cursor: grabbing; }
+.widget-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.widget-actions { display: flex; gap: 0.25rem; }
+.widget-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: var(--font);
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-sm { padding: 0.3rem 0.6rem; font-size: 0.78rem; }
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  transition: color 0.15s, background 0.15s;
+}
+.btn-icon:hover { color: var(--text); background: var(--surface2); }
+.btn-danger:hover { color: var(--danger); }
+
+/* ── Modal ── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  min-width: 340px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: var(--shadow);
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.modal-title { font-size: 1rem; font-weight: 600; }
+.modal-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+
+/* ── Form ── */
+.form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.form-label { font-size: 0.82rem; color: var(--text-dim); font-weight: 500; }
+.form-control {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.9rem;
+  padding: 0.45rem 0.75rem;
+  width: 100%;
+  font-family: var(--font);
+  transition: border-color 0.15s;
+}
+.form-control:focus { outline: none; border-color: var(--accent); }
+
+/* ── Widget type badge ── */
+.widget-type-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+}
+.widget-type-id { font-size: 0.72rem; color: var(--text-dim); display: block; }

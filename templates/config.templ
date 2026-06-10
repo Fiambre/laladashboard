@@ -1,0 +1,129 @@
+package templates
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/rfguerreroa/laladashboard/internal/config"
+	"github.com/rfguerreroa/laladashboard/internal/registry"
+	"github.com/rfguerreroa/laladashboard/internal/widgets"
+)
+
+script callAddWidget(typeID string) {
+	addWidget(typeID)
+}
+
+script callOpenSettings(widgetID string) {
+	openSettings(widgetID)
+}
+
+script callRemoveWidget(widgetID string) {
+	removeWidget(widgetID)
+}
+
+script callToggleTheme() {
+	toggleTheme()
+}
+
+script initDashboardItems(itemsJSON string) {
+	window.DASHBOARD_ITEMS = JSON.parse(itemsJSON);
+}
+
+templ Config(cfg config.DashboardConfig, reg *registry.Registry) {
+	@ConfigBase("Configuración", cfg.Theme) {
+		<nav class="topbar">
+			<a href="/" class="topbar-link">← Dashboard</a>
+			<span class="topbar-brand">Configuración</span>
+			<div class="topbar-actions">
+				<button class="btn btn-secondary" onclick={ callToggleTheme() }>
+					if cfg.Theme == "dark" {
+						☀ Modo claro
+					} else {
+						☾ Modo oscuro
+					}
+				</button>
+			</div>
+		</nav>
+		<div class="config-layout">
+			<aside class="config-sidebar">
+				<h3>Widgets disponibles</h3>
+				<div class="widget-list">
+					for _, w := range reg.All() {
+						<div class="widget-list-item">
+							<div>
+								<strong>{ w.DisplayName() }</strong>
+								<small class="widget-type-id">{ w.TypeID() }</small>
+							</div>
+							<button
+								class="btn btn-sm btn-primary"
+								onclick={ callAddWidget(w.TypeID()) }
+							>+ Añadir</button>
+						</div>
+					}
+				</div>
+			</aside>
+			<main class="config-main">
+				<div class="config-toolbar">
+					<h2>Layout del dashboard</h2>
+					<span class="save-status" id="save-status"></span>
+				</div>
+				<div class="grid-stack" id="dashboard-grid">
+					for _, inst := range cfg.Widgets {
+						if inst.Enabled {
+							@configWidgetCard(inst, reg)
+						}
+					}
+				</div>
+			</main>
+		</div>
+		@initDashboardItems(dashboardItemsJSONRaw(cfg.Widgets))
+		<script src="/static/js/config.js"></script>
+	}
+}
+
+templ configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) {
+	<div
+		class="grid-stack-item"
+		gs-id={ inst.ID }
+		gs-x={ itoa(inst.Grid.X) }
+		gs-y={ itoa(inst.Grid.Y) }
+		gs-w={ itoa(inst.Grid.W) }
+		gs-h={ itoa(inst.Grid.H) }
+	>
+		<div class="grid-stack-item-content widget-card">
+			<div class="widget-header">
+				<span class="widget-title">{ inst.Title }</span>
+				<div class="widget-actions">
+					<button class="btn-icon" onclick={ callOpenSettings(inst.ID) } title="Configurar">⚙</button>
+					<button class="btn-icon btn-danger" onclick={ callRemoveWidget(inst.ID) } title="Eliminar">✕</button>
+				</div>
+			</div>
+			<div class="widget-preview">
+				if w, ok := reg.Get(inst.TypeID); ok {
+					<small class="widget-type-badge">{ w.DisplayName() }</small>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+func dashboardItemsJSONRaw(items []widgets.WidgetInstance) string {
+	type item struct {
+		ID string `json:"id"`
+		X  int    `json:"x"`
+		Y  int    `json:"y"`
+		W  int    `json:"w"`
+		H  int    `json:"h"`
+	}
+	out := make([]item, 0, len(items))
+	for _, inst := range items {
+		if inst.Enabled {
+			out = append(out, item{ID: inst.ID, X: inst.Grid.X, Y: inst.Grid.Y, W: inst.Grid.W, H: inst.Grid.H})
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+func itoa(n int) string {
+	return fmt.Sprintf("%d", n)
+}

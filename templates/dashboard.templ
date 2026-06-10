@@ -1,0 +1,105 @@
+package templates
+
+import (
+	"context"
+	"github.com/rfguerreroa/laladashboard/internal/config"
+	"github.com/rfguerreroa/laladashboard/internal/registry"
+	"github.com/rfguerreroa/laladashboard/internal/widgets"
+)
+
+// regions maps grid position to a MagicMirror-style screen region.
+// Columns 0-3 → left, 4-7 → center, 8-11 → right
+// Rows    0-3 → top,  4-7 → middle,  8+  → bottom
+var regionClass = map[string]string{
+	"top-left":    "region region-top-left",
+	"top-center":  "region region-top-center",
+	"top-right":   "region region-top-right",
+	"mid-left":    "region region-mid-left",
+	"mid-center":  "region region-mid-center",
+	"mid-right":   "region region-mid-right",
+	"bot-left":    "region region-bot-left",
+	"bot-center":  "region region-bot-center",
+	"bot-right":   "region region-bot-right",
+}
+
+func widgetRegion(g widgets.GridPosition) string {
+	col := "left"
+	if g.X >= 8 {
+		col = "right"
+	} else if g.X >= 4 {
+		col = "center"
+	}
+	row := "top"
+	if g.Y >= 8 {
+		row = "bot"
+	} else if g.Y >= 4 {
+		row = "mid"
+	}
+	return row + "-" + col
+}
+
+type regionEntry struct {
+	region string
+	inst   widgets.WidgetInstance
+}
+
+func groupByRegion(insts []widgets.WidgetInstance) map[string][]widgets.WidgetInstance {
+	m := make(map[string][]widgets.WidgetInstance)
+	for _, inst := range insts {
+		if !inst.Enabled {
+			continue
+		}
+		r := widgetRegion(inst.Grid)
+		m[r] = append(m[r], inst)
+	}
+	return m
+}
+
+var regionOrder = []string{
+	"top-left", "top-center", "top-right",
+	"mid-left", "mid-center", "mid-right",
+	"bot-left", "bot-center", "bot-right",
+}
+
+templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry) {
+	@Base("Dashboard", cfg.Theme) {
+		<a href="/config" class="config-link">⚙ Config</a>
+		<div class="dashboard-page">
+			for _, region := range regionOrder {
+				<div class={ regionClass[region] }>
+					for _, inst := range groupByRegion(cfg.Widgets)[region] {
+						@dashboardWidget(inst, reg)
+					}
+				</div>
+			}
+		</div>
+	}
+}
+
+templ dashboardWidget(inst widgets.WidgetInstance, reg *registry.Registry) {
+	<div
+		id={ "widget-" + inst.ID }
+		hx-get={ "/widgets/" + inst.ID + "/content" }
+		hx-trigger={ pollTrigger(inst) }
+		hx-swap="innerHTML"
+		hx-target={ "#widget-" + inst.ID }
+	>
+		@widgetInitialContent(context.Background(), inst, reg)
+	</div>
+}
+
+templ widgetInitialContent(ctx context.Context, inst widgets.WidgetInstance, reg *registry.Registry) {
+	if w, ok := reg.Get(inst.TypeID); ok {
+		@w.RenderContent(ctx, inst)
+	} else {
+		<p class="widget-error">Widget desconocido: { inst.TypeID }</p>
+	}
+}
+
+func pollTrigger(inst widgets.WidgetInstance) string {
+	seconds := inst.Setting("poll_seconds", "0")
+	if seconds == "0" || seconds == "" {
+		return "load"
+	}
+	return "load, every " + seconds + "s"
+}

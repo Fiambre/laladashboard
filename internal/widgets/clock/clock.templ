@@ -1,0 +1,15 @@
+package clock
+
+templ clockContent(dateStr string, hoursMinutes string, seconds string, showSeconds bool) {
+	<div class="clock-widget">
+		if dateStr != "" {
+			<div class="clock-date">{ dateStr }</div>
+		}
+		<div class="clock-time-row">
+			<span class="clock-hours-minutes">{ hoursMinutes }</span>
+			if showSeconds {
+				<span class="clock-seconds">{ seconds }</span>
+			}
+		</div>
+	</div>
+}

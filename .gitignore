@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+/laladashboard
+/laladashboard.exe
+*.test
+*.out
+
+# Go module cache
+vendor/
+
+# Templ generated files (optional — uncomment to exclude from repo)
+# *_templ.go
+
+# Config with secrets (keep the example, exclude the live one)
+config/dashboard.json
+
+# WASM build output in example
+sdk/example/*.wasm
+modules/**/*.wasm
+
+# Go toolchain downloads (no-admin install)
+go-dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,36 @@
+package templates
+
+templ Base(title string, theme string) {
+	<!DOCTYPE html>
+	<html lang="es" data-theme={ theme }>
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } — LalaDashboard</title>
+			<link rel="stylesheet" href="/static/css/dashboard.css"/>
+			<script src="/static/js/htmx.min.js" defer></script>
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}
+
+templ ConfigBase(title string, theme string) {
+	<!DOCTYPE html>
+	<html lang="es" data-theme={ theme }>
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } — Config</title>
+			<link rel="stylesheet" href="/static/css/gridstack.min.css"/>
+			<link rel="stylesheet" href="/static/css/dashboard.css"/>
+			<link rel="stylesheet" href="/static/css/config.css"/>
+			<script src="/static/js/htmx.min.js" defer></script>
+			<script src="/static/js/gridstack-all.js"></script>
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}

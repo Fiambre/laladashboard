@@ -1,0 +1,16 @@
+package iframe
+
+templ iframeContent(url string) {
+	<div class="iframe-widget">
+		<iframe
+			src={ url }
+			loading="lazy"
+			sandbox="allow-scripts allow-same-origin allow-forms"
+			referrerpolicy="no-referrer"
+		></iframe>
+	</div>
+}
+
+templ iframeError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}

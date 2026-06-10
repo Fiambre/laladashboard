@@ -1,0 +1,38 @@
+package rss
+
+import "github.com/mmcdole/gofeed"
+
+// rssContent renders in "ticker" style for bottom regions, list for side regions.
+templ rssContent(feedTitle string, items []*gofeed.Item, style string) {
+	<div class="rss-widget">
+		if style == "ticker" && len(items) > 0 {
+			<div class="rss-source">
+				{ feedTitle }
+				if items[0].PublishedParsed != nil {
+					<span>, { relativeTime(*items[0].PublishedParsed) } ago:</span>
+				}
+			</div>
+			<div class="rss-headline">{ items[0].Title }</div>
+		} else {
+			if feedTitle != "" {
+				<div class="rss-source">{ feedTitle }</div>
+			}
+			<ul class="rss-list-minimal">
+				for _, item := range items {
+					<li class="rss-item-minimal">
+						<a href={ templ.SafeURL(item.Link) } target="_blank" rel="noopener noreferrer">
+							{ item.Title }
+						</a>
+						if item.PublishedParsed != nil {
+							<div class="rss-item-date">{ item.PublishedParsed.Format("02 Jan 15:04") }</div>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+templ rssError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}
