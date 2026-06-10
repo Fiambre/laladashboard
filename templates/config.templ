@@ -33,6 +33,7 @@ templ Config(cfg config.DashboardConfig, reg *registry.Registry) {
 		<nav class="topbar">
 			<a href="/" class="topbar-link">← Dashboard</a>
 			<span class="topbar-brand">Configuración</span>
+			<a href="/modules" class="topbar-link">🧩 Módulos</a>
 			<div class="topbar-actions">
 				<button class="btn btn-secondary" onclick={ callToggleTheme() }>
 					if cfg.Theme == "dark" {

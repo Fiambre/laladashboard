@@ -1,0 +1,64 @@
+package templates
+
+import (
+	"github.com/rfguerreroa/laladashboard/internal/moduleloader"
+)
+
+script installModule(moduleID string) {
+	installMod(moduleID)
+}
+
+script uninstallModule(moduleID string) {
+	uninstallMod(moduleID)
+}
+
+templ ModuleStore(reg moduleloader.Registry, installed map[string]bool, fetchErr error) {
+	@ConfigBase("Módulos", "dark") {
+		<nav class="topbar">
+			<a href="/config" class="topbar-link">← Config</a>
+			<span class="topbar-brand">Tienda de módulos</span>
+			<a href="https://github.com/Fiambre/laladashboard-modules" target="_blank" class="topbar-link">GitHub ↗</a>
+		</nav>
+		<div class="module-store">
+			if fetchErr != nil {
+				<div class="store-error">
+					<p>⚠ No se pudo conectar al registro de módulos.</p>
+					<small>{ fetchErr.Error() }</small>
+				</div>
+			} else if len(reg.Modules) == 0 {
+				<p class="store-empty">No hay módulos disponibles en el registro.</p>
+			} else {
+				<div class="module-grid">
+					for _, mod := range reg.Modules {
+						<div class="module-card" id={ "mod-" + mod.ID }>
+							<div class="module-card-header">
+								<span class="module-name">{ mod.Name }</span>
+								<span class="module-version">v{ mod.Version }</span>
+							</div>
+							<p class="module-desc">{ mod.Description }</p>
+							<div class="module-meta">
+								<span class="module-author">by { mod.Author }</span>
+								<div class="module-tags">
+									for _, tag := range mod.Tags {
+										<span class="tag">{ tag }</span>
+									}
+								</div>
+							</div>
+							<div class="module-actions">
+								<a href={ templ.SafeURL(mod.SourceURL) } target="_blank" class="btn btn-secondary btn-sm">Fuente ↗</a>
+								if installed[mod.ID] {
+									<span class="badge-installed">✓ Instalado</span>
+									<button class="btn btn-danger btn-sm" onclick={ uninstallModule(mod.ID) }>Desinstalar</button>
+								} else {
+									<button class="btn btn-primary btn-sm" onclick={ installModule(mod.ID) }>Instalar</button>
+								}
+							</div>
+						</div>
+					}
+				</div>
+			}
+		</div>
+		<div id="store-toast" class="store-toast"></div>
+		<script src="/static/js/modules.js"></script>
+	}
+}

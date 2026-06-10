@@ -37,7 +37,7 @@ func main() {
 	}
 
 	reg := registry.Global()
-	handler := server.New(store, reg, staticFS)
+	handler := server.New(store, reg, loader, staticFS)
 
 	addr := ":8080"
 	log.Printf("LalaDashboard running on http://localhost%s", addr)

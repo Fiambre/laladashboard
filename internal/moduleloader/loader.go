@@ -69,6 +69,11 @@ func (l *Loader) LoadAll(ctx context.Context, modulesDir string) error {
 	return nil
 }
 
+// LoadModule is exported for hot-loading a single module directory.
+func (l *Loader) LoadModule(ctx context.Context, dir string) error {
+	return l.loadModule(ctx, dir)
+}
+
 func (l *Loader) loadModule(ctx context.Context, dir string) error {
 	manifestPath := filepath.Join(dir, "manifest.json")
 	manifestData, err := os.ReadFile(manifestPath)
