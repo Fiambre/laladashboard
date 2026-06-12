@@ -113,6 +113,8 @@ function buildSettingsForm(schema, settings) {
         `<option value="${escapeAttr(opt)}"${opt === value ? ' selected' : ''}>${escapeHTML(opt)}</option>`
       ).join('');
       input = `<select class="form-control" id="field-${escapeAttr(field.key)}" name="${escapeAttr(field.key)}" ${required}>${options}</select>`;
+    } else if (field.type === 'textarea') {
+      input = `<textarea class="form-control" id="field-${escapeAttr(field.key)}" name="${escapeAttr(field.key)}" rows="4" ${placeholder} ${required}>${escapeHTML(value)}</textarea>`;
     } else {
       const type = field.type === 'number' ? 'number' : field.type === 'url' ? 'url' : 'text';
       input = `<input class="form-control" type="${type}" id="field-${escapeAttr(field.key)}" name="${escapeAttr(field.key)}" value="${escapeAttr(value)}" ${placeholder} ${required}>`;
