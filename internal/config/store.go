@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rfguerreroa/laladashboard/internal/widgets"
 )
@@ -14,6 +15,7 @@ type Store struct {
 	mu       sync.RWMutex
 	filePath string
 	current  DashboardConfig
+	version  int64
 }
 
 func NewStore(filePath string) (*Store, error) {
@@ -51,7 +53,15 @@ func (s *Store) Save() error {
 	}
 	// On Windows, Rename fails if destination exists — remove first
 	_ = os.Remove(s.filePath)
-	return os.Rename(tmp, s.filePath)
+	if err := os.Rename(tmp, s.filePath); err != nil {
+		return err
+	}
+	atomic.AddInt64(&s.version, 1)
+	return nil
+}
+
+func (s *Store) Version() int64 {
+	return atomic.LoadInt64(&s.version)
 }
 
 func (s *Store) Get() DashboardConfig {

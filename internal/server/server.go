@@ -33,6 +33,8 @@ func New(store *config.Store, reg *registry.Registry, loader *moduleloader.Loade
 	r.Post("/api/modules/{moduleID}/install", handlers.InstallModule(loader))
 	r.Delete("/api/modules/{moduleID}/uninstall", handlers.UninstallModule(loader))
 
+	r.Get("/api/config-version", handlers.GetConfigVersion(store))
+
 	r.Get("/widgets/{widgetID}/content", handlers.WidgetContent(store, reg))
 
 	return r

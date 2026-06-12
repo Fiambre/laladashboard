@@ -108,6 +108,14 @@ func SaveWidgetSettings(store *config.Store) http.HandlerFunc {
 	}
 }
 
+func GetConfigVersion(store *config.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(map[string]int64{"version": store.Version()})
+	}
+}
+
 func SetTheme(store *config.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

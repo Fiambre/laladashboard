@@ -61,7 +61,11 @@ var regionOrder = []string{
 	"bot-left", "bot-center", "bot-right",
 }
 
-templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry) {
+script initDashboardVersion(v int64) {
+	window.DASHBOARD_VERSION = v;
+}
+
+templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry, version int64) {
 	@Base("Dashboard", cfg.Theme) {
 		<a href="/config" class="config-link">⚙ Config</a>
 		<div class="dashboard-page">
@@ -73,6 +77,8 @@ templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry) {
 				</div>
 			}
 		</div>
+		@initDashboardVersion(version)
+		<script src="/static/js/dashboard.js"></script>
 	}
 }
 
