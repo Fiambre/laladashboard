@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/rfguerreroa/laladashboard/internal/registry"
@@ -108,6 +110,12 @@ func (l *Loader) loadModule(ctx context.Context, dir string) error {
 	hostBuilder.NewFunctionBuilder().
 		WithFunc(l.hostHTTPPost).
 		Export("http_post")
+	hostBuilder.NewFunctionBuilder().
+		WithFunc(l.hostHTTPPostAuth).
+		Export("http_post_auth")
+	hostBuilder.NewFunctionBuilder().
+		WithFunc(l.hostHTTPCheck).
+		Export("http_check")
 	hostBuilder.NewFunctionBuilder().
 		WithFunc(l.hostLog).
 		Export("log_message")
@@ -292,6 +300,68 @@ func (l *Loader) hostLog(_ context.Context, mod api.Module, msgPtr, msgLen uint3
 		return
 	}
 	log.Printf("[wasm/%s] %s", mod.Name(), string(b))
+}
+
+func (l *Loader) hostHTTPPostAuth(ctx context.Context, mod api.Module, urlPtr, urlLen, bodyPtr, bodyLen, authPtr, authLen, resultPtr uint32) uint32 {
+	urlBytes, ok := mod.Memory().Read(urlPtr, urlLen)
+	if !ok {
+		return 0
+	}
+	rawURL := string(urlBytes)
+	if err := safeExternalURL(rawURL); err != nil {
+		log.Printf("[wasm/%s] http_post_auth blocked: %v", mod.Name(), err)
+		return 0
+	}
+	bodyBytes, ok := mod.Memory().Read(bodyPtr, bodyLen)
+	if !ok {
+		return 0
+	}
+	authBytes, ok := mod.Memory().Read(authPtr, authLen)
+	if !ok {
+		return 0
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", rawURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return 0
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "bearer "+string(authBytes))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	result, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	mod.Memory().Write(resultPtr, result)
+	return uint32(len(result))
+}
+
+func (l *Loader) hostHTTPCheck(_ context.Context, mod api.Module, urlPtr, urlLen uint32) uint32 {
+	urlBytes, ok := mod.Memory().Read(urlPtr, urlLen)
+	if !ok {
+		return 0
+	}
+	rawURL := string(urlBytes)
+	if err := safeExternalURL(rawURL); err != nil {
+		log.Printf("[wasm/%s] http_check blocked: %v", mod.Name(), err)
+		return 0
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest("HEAD", rawURL, nil) //nolint:gosec
+	if err != nil {
+		return 0
+	}
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0
+	}
+	resp.Body.Close()
+	rtt := uint32(time.Since(start).Milliseconds())
+	if rtt == 0 {
+		rtt = 1
+	}
+	return rtt
 }
 
 func byteReader(b []byte) io.Reader {
