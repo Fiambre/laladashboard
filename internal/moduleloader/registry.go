@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +18,29 @@ import (
 var validID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 const RegistryURL = "https://cdn.jsdelivr.net/gh/Fiambre/laladashboard-modules@main/registry.json"
+
+// allowedDownloadHosts is the set of HTTPS hosts from which WASM/manifest files
+// may be downloaded. This prevents a compromised registry.json from redirecting
+// installs to an attacker-controlled server.
+var allowedDownloadHosts = map[string]bool{
+	"cdn.jsdelivr.net":          true,
+	"raw.githubusercontent.com": true,
+	"github.com":                true,
+}
+
+func validateDownloadURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid download URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("download URL must use https, got %q", u.Scheme)
+	}
+	if !allowedDownloadHosts[u.Host] {
+		return fmt.Errorf("download host %q is not in the allowlist", u.Host)
+	}
+	return nil
+}
 
 // in-memory cache for the remote registry
 var (
@@ -106,6 +130,14 @@ func InstallModule(mod RemoteModule, modulesDir string) error {
 	if !validID.MatchString(mod.ID) {
 		return fmt.Errorf("invalid module id: %q", mod.ID)
 	}
+	// Reject downloads from hosts outside the allowlist before hitting the network.
+	if err := validateDownloadURL(mod.ManifestURL); err != nil {
+		return fmt.Errorf("manifest URL rejected: %w", err)
+	}
+	if err := validateDownloadURL(mod.WasmURL); err != nil {
+		return fmt.Errorf("wasm URL rejected: %w", err)
+	}
+
 	dest := filepath.Join(modulesDir, mod.ID)
 	// Guard against path traversal after Join
 	base, _ := filepath.Abs(modulesDir)
