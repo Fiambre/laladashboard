@@ -1,15 +1,70 @@
 package clock
 
-templ clockContent(dateStr string, hoursMinutes string, seconds string, showSeconds bool) {
-	<div class="clock-widget">
-		if dateStr != "" {
-			<div class="clock-date">{ dateStr }</div>
+templ clockContent(tz string, format string, showSeconds bool, showDate bool) {
+	<div
+		class="clock-widget"
+		data-clock="1"
+		data-tz={ tz }
+		data-format={ format }
+		data-show-seconds={ boolAttr(showSeconds) }
+		data-show-date={ boolAttr(showDate) }
+	>
+		if showDate {
+			<div class="clock-date"></div>
 		}
 		<div class="clock-time-row">
-			<span class="clock-hours-minutes">{ hoursMinutes }</span>
+			<span class="clock-hours-minutes"></span>
 			if showSeconds {
-				<span class="clock-seconds">{ seconds }</span>
+				<span class="clock-seconds"></span>
 			}
 		</div>
 	</div>
+	<script>
+		(function () {
+			var root = document.currentScript.previousElementSibling;
+			var tz = root.dataset.tz || 'UTC';
+			var use12h = root.dataset.format === '12h';
+			var showSecs = root.dataset.showSeconds === 'true';
+			var showDate = root.dataset.showDate === 'true';
+
+			var hmEl = root.querySelector('.clock-hours-minutes');
+			var secEl = root.querySelector('.clock-seconds');
+			var dateEl = root.querySelector('.clock-date');
+
+			var timeFmt = new Intl.DateTimeFormat('en-US', {
+				timeZone: tz,
+				hour: '2-digit', minute: '2-digit',
+				hour12: use12h,
+			});
+			var secFmt = showSecs ? new Intl.DateTimeFormat('en-US', {
+				timeZone: tz, second: '2-digit', hour12: false,
+			}) : null;
+			var dateFmt = showDate ? new Intl.DateTimeFormat('en-US', {
+				timeZone: tz,
+				weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+			}) : null;
+
+			function tick() {
+				var now = new Date();
+				if (hmEl) hmEl.textContent = timeFmt.format(now);
+				if (secEl && secFmt) secEl.textContent = secFmt.format(now).replace(/^0/, '');
+				if (dateEl && dateFmt) dateEl.textContent = dateFmt.format(now);
+			}
+
+			tick();
+			var id = setInterval(tick, 1000);
+
+			// Stop ticking if the element is removed from the DOM (widget deleted/refreshed)
+			new MutationObserver(function (_, obs) {
+				if (!document.contains(root)) { clearInterval(id); obs.disconnect(); }
+			}).observe(document.body, { childList: true, subtree: true });
+		})();
+	</script>
+}
+
+func boolAttr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
