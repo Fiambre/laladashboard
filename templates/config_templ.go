@@ -18,51 +18,61 @@ import (
 
 func callAddWidget(typeID string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_callAddWidget_25f7`,
-		Function: `function __templ_callAddWidget_25f7(typeID){addWidget(typeID)
+		Name: `__templ_callAddWidget_c3c9`,
+		Function: `function __templ_callAddWidget_c3c9(typeID){addWidget(typeID)
 }`,
-		Call:       templ.SafeScript(`__templ_callAddWidget_25f7`, typeID),
-		CallInline: templ.SafeScriptInline(`__templ_callAddWidget_25f7`, typeID),
+		Call:       templ.SafeScript(`__templ_callAddWidget_c3c9`, typeID),
+		CallInline: templ.SafeScriptInline(`__templ_callAddWidget_c3c9`, typeID),
 	}
 }
 
 func callOpenSettings(widgetID string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_callOpenSettings_7ffd`,
-		Function: `function __templ_callOpenSettings_7ffd(widgetID){openSettings(widgetID)
+		Name: `__templ_callOpenSettings_4c93`,
+		Function: `function __templ_callOpenSettings_4c93(widgetID){openSettings(widgetID)
 }`,
-		Call:       templ.SafeScript(`__templ_callOpenSettings_7ffd`, widgetID),
-		CallInline: templ.SafeScriptInline(`__templ_callOpenSettings_7ffd`, widgetID),
+		Call:       templ.SafeScript(`__templ_callOpenSettings_4c93`, widgetID),
+		CallInline: templ.SafeScriptInline(`__templ_callOpenSettings_4c93`, widgetID),
 	}
 }
 
 func callRemoveWidget(widgetID string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_callRemoveWidget_cf2e`,
-		Function: `function __templ_callRemoveWidget_cf2e(widgetID){removeWidget(widgetID)
+		Name: `__templ_callRemoveWidget_4694`,
+		Function: `function __templ_callRemoveWidget_4694(widgetID){removeWidget(widgetID)
 }`,
-		Call:       templ.SafeScript(`__templ_callRemoveWidget_cf2e`, widgetID),
-		CallInline: templ.SafeScriptInline(`__templ_callRemoveWidget_cf2e`, widgetID),
+		Call:       templ.SafeScript(`__templ_callRemoveWidget_4694`, widgetID),
+		CallInline: templ.SafeScriptInline(`__templ_callRemoveWidget_4694`, widgetID),
 	}
 }
 
 func callToggleTheme() templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_callToggleTheme_15ff`,
-		Function: `function __templ_callToggleTheme_15ff(){toggleTheme()
+		Name: `__templ_callToggleTheme_d461`,
+		Function: `function __templ_callToggleTheme_d461(){toggleTheme()
 }`,
-		Call:       templ.SafeScript(`__templ_callToggleTheme_15ff`),
-		CallInline: templ.SafeScriptInline(`__templ_callToggleTheme_15ff`),
+		Call:       templ.SafeScript(`__templ_callToggleTheme_d461`),
+		CallInline: templ.SafeScriptInline(`__templ_callToggleTheme_d461`),
 	}
 }
 
 func initDashboardItems(itemsJSON string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_initDashboardItems_a882`,
-		Function: `function __templ_initDashboardItems_a882(itemsJSON){window.DASHBOARD_ITEMS = JSON.parse(itemsJSON);
+		Name: `__templ_initDashboardItems_486d`,
+		Function: `function __templ_initDashboardItems_486d(itemsJSON){window.DASHBOARD_ITEMS = JSON.parse(itemsJSON);
 }`,
-		Call:       templ.SafeScript(`__templ_initDashboardItems_a882`, itemsJSON),
-		CallInline: templ.SafeScriptInline(`__templ_initDashboardItems_a882`, itemsJSON),
+		Call:       templ.SafeScript(`__templ_initDashboardItems_486d`, itemsJSON),
+		CallInline: templ.SafeScriptInline(`__templ_initDashboardItems_486d`, itemsJSON),
+	}
+}
+
+func initWidgetData(dataJSON string) templ.ComponentScript {
+	return templ.ComponentScript{
+		Name: `__templ_initWidgetData_ebb4`,
+		Function: `function __templ_initWidgetData_ebb4(dataJSON){window.WIDGET_DATA = JSON.parse(dataJSON);
+}`,
+		Call:       templ.SafeScript(`__templ_initWidgetData_ebb4`, dataJSON),
+		CallInline: templ.SafeScriptInline(`__templ_initWidgetData_ebb4`, dataJSON),
 	}
 }
 
@@ -143,7 +153,7 @@ func Config(cfg config.DashboardConfig, reg *registry.Registry) templ.Component 
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(w.DisplayName())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 54, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 58, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -156,7 +166,7 @@ func Config(cfg config.DashboardConfig, reg *registry.Registry) templ.Component 
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(w.TypeID())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 55, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 59, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -204,7 +214,15 @@ func Config(cfg config.DashboardConfig, reg *registry.Registry) templ.Component 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, " <script src=\"/static/js/config.js\"></script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, " ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = initWidgetData(widgetDataJSON(cfg, reg)).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " <div class=\"modal-overlay\" id=\"settings-modal\"><div class=\"modal\"><div class=\"modal-header\"><span class=\"modal-title\" id=\"settings-modal-title\">Configurar widget</span> <button class=\"btn-icon\" onclick=\"closeSettings()\">✕</button></div><div class=\"modal-body\" id=\"settings-modal-body\"></div><div class=\"modal-footer\"><span class=\"modal-error\" id=\"settings-modal-error\"></span> <button class=\"btn btn-secondary\" onclick=\"closeSettings()\">Cancelar</button> <button class=\"btn btn-primary\" onclick=\"submitSettings()\">Guardar</button></div></div></div><script src=\"/static/js/config.js\"></script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -239,85 +257,85 @@ func configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) templ
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"grid-stack-item\" gs-id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div class=\"grid-stack-item\" gs-id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(inst.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 87, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 106, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" gs-x=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" gs-x=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(itoa(inst.Grid.X))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 88, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 107, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" gs-y=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" gs-y=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(itoa(inst.Grid.Y))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 89, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 108, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" gs-w=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" gs-w=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(itoa(inst.Grid.W))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 90, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 109, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" gs-h=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" gs-h=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(itoa(inst.Grid.H))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 91, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 110, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\"><div class=\"grid-stack-item-content widget-card\"><div class=\"widget-header\"><span class=\"widget-title\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"><div class=\"grid-stack-item-content widget-card\"><div class=\"widget-header\"><span class=\"widget-title\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(inst.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 95, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 114, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span><div class=\"widget-actions\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</span><div class=\"widget-actions\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -325,7 +343,7 @@ func configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<button class=\"btn-icon\" onclick=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<button class=\"btn-icon\" onclick=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -334,7 +352,7 @@ func configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" title=\"Configurar\">⚙</button> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" title=\"Configurar\">⚙</button> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -342,7 +360,7 @@ func configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<button class=\"btn-icon btn-danger\" onclick=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<button class=\"btn-icon btn-danger\" onclick=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -351,30 +369,30 @@ func configWidgetCard(inst widgets.WidgetInstance, reg *registry.Registry) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" title=\"Eliminar\">✕</button></div></div><div class=\"widget-preview\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" title=\"Eliminar\">✕</button></div></div><div class=\"widget-preview\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if w, ok := reg.Get(inst.TypeID); ok {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<small class=\"widget-type-badge\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<small class=\"widget-type-badge\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(w.DisplayName())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 103, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/config.templ`, Line: 122, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</small>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</small>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -402,6 +420,34 @@ func dashboardItemsJSONRaw(items []widgets.WidgetInstance) string {
 
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
+}
+
+type widgetEntry struct {
+	Title    string            `json:"title"`
+	TypeID   string            `json:"typeID"`
+	Settings map[string]string `json:"settings"`
+	Schema   any               `json:"schema"`
+}
+
+func widgetDataJSON(cfg config.DashboardConfig, reg *registry.Registry) string {
+	out := make(map[string]widgetEntry, len(cfg.Widgets))
+	for _, inst := range cfg.Widgets {
+		if !inst.Enabled {
+			continue
+		}
+		var schema any
+		if w, ok := reg.Get(inst.TypeID); ok {
+			schema = w.ConfigSchema()
+		}
+		out[inst.ID] = widgetEntry{
+			Title:    inst.Title,
+			TypeID:   inst.TypeID,
+			Settings: inst.Settings,
+			Schema:   schema,
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
 
 var _ = templruntime.GeneratedTemplate

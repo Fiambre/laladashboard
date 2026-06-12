@@ -28,6 +28,10 @@ script initDashboardItems(itemsJSON string) {
 	window.DASHBOARD_ITEMS = JSON.parse(itemsJSON);
 }
 
+script initWidgetData(dataJSON string) {
+	window.WIDGET_DATA = JSON.parse(dataJSON);
+}
+
 templ Config(cfg config.DashboardConfig, reg *registry.Registry) {
 	@ConfigBase("Configuración", cfg.Theme) {
 		<nav class="topbar">
@@ -77,6 +81,21 @@ templ Config(cfg config.DashboardConfig, reg *registry.Registry) {
 			</main>
 		</div>
 		@initDashboardItems(dashboardItemsJSONRaw(cfg.Widgets))
+		@initWidgetData(widgetDataJSON(cfg, reg))
+		<div class="modal-overlay" id="settings-modal">
+			<div class="modal">
+				<div class="modal-header">
+					<span class="modal-title" id="settings-modal-title">Configurar widget</span>
+					<button class="btn-icon" onclick="closeSettings()">✕</button>
+				</div>
+				<div class="modal-body" id="settings-modal-body"></div>
+				<div class="modal-footer">
+					<span class="modal-error" id="settings-modal-error"></span>
+					<button class="btn btn-secondary" onclick="closeSettings()">Cancelar</button>
+					<button class="btn btn-primary" onclick="submitSettings()">Guardar</button>
+				</div>
+			</div>
+		</div>
 		<script src="/static/js/config.js"></script>
 	}
 }
@@ -127,4 +146,32 @@ func dashboardItemsJSONRaw(items []widgets.WidgetInstance) string {
 
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
+}
+
+type widgetEntry struct {
+	Title    string            `json:"title"`
+	TypeID   string            `json:"typeID"`
+	Settings map[string]string `json:"settings"`
+	Schema   any               `json:"schema"`
+}
+
+func widgetDataJSON(cfg config.DashboardConfig, reg *registry.Registry) string {
+	out := make(map[string]widgetEntry, len(cfg.Widgets))
+	for _, inst := range cfg.Widgets {
+		if !inst.Enabled {
+			continue
+		}
+		var schema any
+		if w, ok := reg.Get(inst.TypeID); ok {
+			schema = w.ConfigSchema()
+		}
+		out[inst.ID] = widgetEntry{
+			Title:    inst.Title,
+			TypeID:   inst.TypeID,
+			Settings: inst.Settings,
+			Schema:   schema,
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
 }
