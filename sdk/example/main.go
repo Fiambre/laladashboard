@@ -43,10 +43,18 @@ func configSchema() int32 {
 	return 0
 }
 
+// allocBuf is a module-level buffer for host-written config data.
+// Using a package-level var prevents the GC from reclaiming the memory
+// before the host finishes writing to the returned pointer.
+var allocBuf []byte
+
 //export alloc
 func alloc(size uint32) uint32 {
-	b := make([]byte, size)
-	return uint32(uintptr(unsafe.Pointer(&b[0])))
+	if uint32(cap(allocBuf)) < size {
+		allocBuf = make([]byte, size)
+	}
+	allocBuf = allocBuf[:size]
+	return uint32(uintptr(unsafe.Pointer(&allocBuf[0])))
 }
 
 //export render

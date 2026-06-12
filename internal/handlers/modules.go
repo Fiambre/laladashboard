@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -109,5 +108,3 @@ func UninstallModule(loader *moduleloader.Loader) http.HandlerFunc {
 	}
 }
 
-// unused import guard
-var _ = context.Background

@@ -59,25 +59,11 @@ func ReadString(ptr, length int32) string {
 	return string(b)
 }
 
-// WriteString copies a string into the shared result buffer and returns its pointer.
-// The host reads the result using the returned pointer and length.
 var outBuf [1 << 20]byte
-
-func WriteString(s string) int32 {
-	n := copy(outBuf[:], s)
-	return int32(uintptr(unsafe.Pointer(&outBuf[0]))) | (int32(n) << 16) // packed ptr+len trick
-}
-
-// WriteStringPtr writes s into the output buffer and returns the pointer.
-// The length is retrieved separately via WriteStringLen.
-func WriteStringPtr(s string) int32 {
-	copy(outBuf[:], s)
-	return int32(uintptr(unsafe.Pointer(&outBuf[0])))
-}
-
-// WriteStringLen returns the length of the last WriteStringPtr call.
 var lastLen int32
 
+// SetOutput writes s into the output buffer so the host can read it via
+// GetOutputPtr / GetOutputLen after an exported function returns.
 func SetOutput(s string) {
 	n := copy(outBuf[:], s)
 	lastLen = int32(n)

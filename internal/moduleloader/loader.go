@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,6 +36,10 @@ type Loader struct {
 	mu      sync.Mutex
 	results map[uint32]string // goroutine-local result store keyed by goroutine ID
 }
+
+// wasmMu serialises all WASM render calls. Wazero module instances share
+// linear memory and are not safe for concurrent use.
+var wasmMu sync.Mutex
 
 func New(ctx context.Context) *Loader {
 	rt := wazero.NewRuntime(ctx)
@@ -210,6 +216,30 @@ func (l *Loader) callRender(ctx context.Context, mod api.Module, configJSON []by
 	return l.readModuleString(ctx, mod, 0)
 }
 
+// safeExternalURL returns an error if rawURL targets a private/loopback address
+// or uses a non-HTTP(S) scheme. This prevents WASM modules from using host
+// HTTP functions as an SSRF proxy into internal network services.
+func safeExternalURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme %q not allowed", u.Scheme)
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("requests to private/loopback addresses are not allowed")
+		}
+	}
+	switch host {
+	case "localhost", "metadata.google.internal":
+		return fmt.Errorf("requests to %q are not allowed", host)
+	}
+	return nil
+}
+
 // Host functions implementations
 
 func (l *Loader) hostHTTPGet(ctx context.Context, mod api.Module, urlPtr, urlLen, resultPtr uint32) uint32 {
@@ -217,7 +247,12 @@ func (l *Loader) hostHTTPGet(ctx context.Context, mod api.Module, urlPtr, urlLen
 	if !ok {
 		return 0
 	}
-	resp, err := http.Get(string(urlBytes)) //nolint:gosec
+	rawURL := string(urlBytes)
+	if err := safeExternalURL(rawURL); err != nil {
+		log.Printf("[wasm/%s] http_get blocked: %v", mod.Name(), err)
+		return 0
+	}
+	resp, err := http.Get(rawURL) //nolint:gosec
 	if err != nil {
 		return 0
 	}
@@ -232,12 +267,16 @@ func (l *Loader) hostHTTPPost(ctx context.Context, mod api.Module, urlPtr, urlLe
 	if !ok {
 		return 0
 	}
+	rawURL := string(urlBytes)
+	if err := safeExternalURL(rawURL); err != nil {
+		log.Printf("[wasm/%s] http_post blocked: %v", mod.Name(), err)
+		return 0
+	}
 	bodyBytes, ok := mod.Memory().Read(bodyPtr, bodyLen)
 	if !ok {
 		return 0
 	}
-	resp, err := http.Post(string(urlBytes), "application/json", //nolint:gosec
-		byteReader(bodyBytes))
+	resp, err := http.Post(rawURL, "application/json", byteReader(bodyBytes)) //nolint:gosec
 	if err != nil {
 		return 0
 	}
@@ -254,8 +293,6 @@ func (l *Loader) hostLog(_ context.Context, mod api.Module, msgPtr, msgLen uint3
 	}
 	log.Printf("[wasm/%s] %s", mod.Name(), string(b))
 }
-
-type byteReadCloser struct{ *byteReader2 }
 
 func byteReader(b []byte) io.Reader {
 	return &byteReader2{data: b}
@@ -293,7 +330,9 @@ func (w *wasmWidget) Render(ctx context.Context, inst widgets.WidgetInstance) te
 
 func (w *wasmWidget) RenderContent(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
 	configJSON, _ := json.Marshal(inst.Settings)
+	wasmMu.Lock()
 	html := w.loader.callRender(ctx, w.mod, configJSON)
+	wasmMu.Unlock()
 	return templ.Raw(html)
 }
 

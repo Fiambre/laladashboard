@@ -58,9 +58,16 @@ func (s *Store) Get() DashboardConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	cfg := s.current
-	// Return a deep copy of widgets slice
 	cfg.Widgets = make([]widgets.WidgetInstance, len(s.current.Widgets))
-	copy(cfg.Widgets, s.current.Widgets)
+	for i, w := range s.current.Widgets {
+		cfg.Widgets[i] = w
+		if w.Settings != nil {
+			cfg.Widgets[i].Settings = make(map[string]string, len(w.Settings))
+			for k, v := range w.Settings {
+				cfg.Widgets[i].Settings[k] = v
+			}
+		}
+	}
 	return cfg
 }
 
