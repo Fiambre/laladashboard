@@ -150,7 +150,9 @@ func (l *Loader) callRender(ctx context.Context, compiled wazero.CompiledModule,
 		WithName(name).
 		WithStdin(bytes.NewReader(configJSON)).
 		WithStdout(&stdout).
-		WithStderr(log.Writer()))
+		WithStderr(log.Writer()).
+		WithSysWalltime().
+		WithSysNanotime())
 	if err != nil {
 		return fmt.Sprintf("<p>render error: %s</p>", err.Error())
 	}
