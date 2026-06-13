@@ -47,8 +47,14 @@ body > .grid-stack {
   padding: 12px;
 }
 
-.grid-stack-item-content.widget-card {
-  overflow: hidden;
+/* Dashboard widgets only: transparent, no border */
+.dashboard-grid .grid-stack-item-content.widget-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+  padding: 8px;
 }
 
 /* ── Config link — shown on hover ── */

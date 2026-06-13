@@ -12,6 +12,6 @@ import (
 func Dashboard(store *config.Store, reg *registry.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := store.Get()
-		templ.Handler(templates.Dashboard(cfg, reg, store.Version())).ServeHTTP(w, r)
+		templ.Handler(templates.Dashboard(cfg, store.Version())).ServeHTTP(w, r)
 	}
 }

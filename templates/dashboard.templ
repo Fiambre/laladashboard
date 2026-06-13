@@ -1,9 +1,8 @@
 package templates
 
 import (
-	"context"
+	"fmt"
 	"github.com/rfguerreroa/laladashboard/internal/config"
-	"github.com/rfguerreroa/laladashboard/internal/registry"
 	"github.com/rfguerreroa/laladashboard/internal/widgets"
 )
 
@@ -22,13 +21,13 @@ script initStaticGrid() {
 	});
 }
 
-templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry, version int64) {
+templ Dashboard(cfg config.DashboardConfig, version int64) {
 	@DashboardBase("Dashboard", cfg.Theme) {
 		<a href="/config" class="config-link">⚙ Config</a>
-		<div class="grid-stack">
+		<div class="grid-stack dashboard-grid">
 			for _, inst := range cfg.Widgets {
 				if inst.Enabled {
-					@dashboardWidget(inst, reg)
+					@dashboardWidget(inst)
 				}
 			}
 		</div>
@@ -38,14 +37,14 @@ templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry, version int6
 	}
 }
 
-templ dashboardWidget(inst widgets.WidgetInstance, reg *registry.Registry) {
+templ dashboardWidget(inst widgets.WidgetInstance) {
 	<div
 		class="grid-stack-item"
 		gs-id={ inst.ID }
-		gs-x={ itoa(inst.Grid.X) }
-		gs-y={ itoa(inst.Grid.Y) }
-		gs-w={ itoa(inst.Grid.W) }
-		gs-h={ itoa(inst.Grid.H) }
+		gs-x={ fmt.Sprintf("%d", inst.Grid.X) }
+		gs-y={ fmt.Sprintf("%d", inst.Grid.Y) }
+		gs-w={ fmt.Sprintf("%d", inst.Grid.W) }
+		gs-h={ fmt.Sprintf("%d", inst.Grid.H) }
 	>
 		<div
 			class="grid-stack-item-content widget-card"
@@ -54,18 +53,8 @@ templ dashboardWidget(inst widgets.WidgetInstance, reg *registry.Registry) {
 			hx-trigger={ pollTrigger(inst) }
 			hx-swap="innerHTML"
 			hx-target={ "#widget-" + inst.ID }
-		>
-			@widgetInitialContent(context.Background(), inst, reg)
-		</div>
+		></div>
 	</div>
-}
-
-templ widgetInitialContent(ctx context.Context, inst widgets.WidgetInstance, reg *registry.Registry) {
-	if w, ok := reg.Get(inst.TypeID); ok {
-		@w.RenderContent(ctx, inst)
-	} else {
-		<p class="widget-error">Widget desconocido: { inst.TypeID }</p>
-	}
 }
 
 func pollTrigger(inst widgets.WidgetInstance) string {
