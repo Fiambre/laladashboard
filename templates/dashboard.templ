@@ -7,90 +7,56 @@ import (
 	"github.com/rfguerreroa/laladashboard/internal/widgets"
 )
 
-// regions maps grid position to a MagicMirror-style screen region.
-// Columns 0-3 → left, 4-7 → center, 8-11 → right
-// Rows    0-3 → top,  4-7 → middle,  8+  → bottom
-var regionClass = map[string]string{
-	"top-left":    "region region-top-left",
-	"top-center":  "region region-top-center",
-	"top-right":   "region region-top-right",
-	"mid-left":    "region region-mid-left",
-	"mid-center":  "region region-mid-center",
-	"mid-right":   "region region-mid-right",
-	"bot-left":    "region region-bot-left",
-	"bot-center":  "region region-bot-center",
-	"bot-right":   "region region-bot-right",
-}
-
-func widgetRegion(g widgets.GridPosition) string {
-	col := "left"
-	if g.X >= 8 {
-		col = "right"
-	} else if g.X >= 4 {
-		col = "center"
-	}
-	row := "top"
-	if g.Y >= 8 {
-		row = "bot"
-	} else if g.Y >= 4 {
-		row = "mid"
-	}
-	return row + "-" + col
-}
-
-type regionEntry struct {
-	region string
-	inst   widgets.WidgetInstance
-}
-
-func groupByRegion(insts []widgets.WidgetInstance) map[string][]widgets.WidgetInstance {
-	m := make(map[string][]widgets.WidgetInstance)
-	for _, inst := range insts {
-		if !inst.Enabled {
-			continue
-		}
-		r := widgetRegion(inst.Grid)
-		m[r] = append(m[r], inst)
-	}
-	return m
-}
-
-var regionOrder = []string{
-	"top-left", "top-center", "top-right",
-	"mid-left", "mid-center", "mid-right",
-	"bot-left", "bot-center", "bot-right",
-}
-
 script initDashboardVersion(v int64) {
 	window.DASHBOARD_VERSION = v;
 }
 
+script initStaticGrid() {
+	GridStack.init({
+		column: 12,
+		cellHeight: 80,
+		animate: false,
+		staticGrid: true,
+		disableResize: true,
+		disableDrag: true,
+	});
+}
+
 templ Dashboard(cfg config.DashboardConfig, reg *registry.Registry, version int64) {
-	@Base("Dashboard", cfg.Theme) {
+	@DashboardBase("Dashboard", cfg.Theme) {
 		<a href="/config" class="config-link">⚙ Config</a>
-		<div class="dashboard-page">
-			for _, region := range regionOrder {
-				<div class={ regionClass[region] }>
-					for _, inst := range groupByRegion(cfg.Widgets)[region] {
-						@dashboardWidget(inst, reg)
-					}
-				</div>
+		<div class="grid-stack">
+			for _, inst := range cfg.Widgets {
+				if inst.Enabled {
+					@dashboardWidget(inst, reg)
+				}
 			}
 		</div>
 		@initDashboardVersion(version)
+		@initStaticGrid()
 		<script src="/static/js/dashboard.js"></script>
 	}
 }
 
 templ dashboardWidget(inst widgets.WidgetInstance, reg *registry.Registry) {
 	<div
-		id={ "widget-" + inst.ID }
-		hx-get={ "/widgets/" + inst.ID + "/content" }
-		hx-trigger={ pollTrigger(inst) }
-		hx-swap="innerHTML"
-		hx-target={ "#widget-" + inst.ID }
+		class="grid-stack-item"
+		gs-id={ inst.ID }
+		gs-x={ itoa(inst.Grid.X) }
+		gs-y={ itoa(inst.Grid.Y) }
+		gs-w={ itoa(inst.Grid.W) }
+		gs-h={ itoa(inst.Grid.H) }
 	>
-		@widgetInitialContent(context.Background(), inst, reg)
+		<div
+			class="grid-stack-item-content widget-card"
+			id={ "widget-" + inst.ID }
+			hx-get={ "/widgets/" + inst.ID + "/content" }
+			hx-trigger={ pollTrigger(inst) }
+			hx-swap="innerHTML"
+			hx-target={ "#widget-" + inst.ID }
+		>
+			@widgetInitialContent(context.Background(), inst, reg)
+		</div>
 	</div>
 }
 
