@@ -14,21 +14,21 @@ import (
 
 func installModule(moduleID string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_installModule_94b5`,
-		Function: `function __templ_installModule_94b5(moduleID){installMod(moduleID)
+		Name: `__templ_installModule_912e`,
+		Function: `function __templ_installModule_912e(moduleID){installMod(moduleID)
 }`,
-		Call:       templ.SafeScript(`__templ_installModule_94b5`, moduleID),
-		CallInline: templ.SafeScriptInline(`__templ_installModule_94b5`, moduleID),
+		Call:       templ.SafeScript(`__templ_installModule_912e`, moduleID),
+		CallInline: templ.SafeScriptInline(`__templ_installModule_912e`, moduleID),
 	}
 }
 
 func uninstallModule(moduleID string) templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_uninstallModule_eece`,
-		Function: `function __templ_uninstallModule_eece(moduleID){uninstallMod(moduleID)
+		Name: `__templ_uninstallModule_ed70`,
+		Function: `function __templ_uninstallModule_ed70(moduleID){uninstallMod(moduleID)
 }`,
-		Call:       templ.SafeScript(`__templ_uninstallModule_eece`, moduleID),
-		CallInline: templ.SafeScriptInline(`__templ_uninstallModule_eece`, moduleID),
+		Call:       templ.SafeScript(`__templ_uninstallModule_ed70`, moduleID),
+		CallInline: templ.SafeScriptInline(`__templ_uninstallModule_ed70`, moduleID),
 	}
 }
 

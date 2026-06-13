@@ -1,7 +1,9 @@
 package moduleloader
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/a-h/templ"
@@ -25,28 +28,30 @@ import (
 
 // ModuleManifest is read from manifest.json next to the .wasm file.
 type ModuleManifest struct {
-	ID          string `json:"id"`
-	Version     string `json:"version"`
-	Author      string `json:"author"`
-	Description string `json:"description"`
-	Wasm        string `json:"wasm"`
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Version     string               `json:"version"`
+	Author      string               `json:"author"`
+	Description string               `json:"description"`
+	Wasm        string               `json:"wasm"`
+	Schema      []widgets.ConfigField `json:"schema"`
 }
 
 // Loader holds the Wazero runtime and all loaded WASM modules.
 type Loader struct {
 	runtime wazero.Runtime
-	mu      sync.Mutex
-	results map[uint32]string // goroutine-local result store keyed by goroutine ID
 }
 
-// wasmMu serialises all WASM render calls. Wazero module instances share
-// linear memory and are not safe for concurrent use.
+// wasmMu serialises all WASM render calls. Re-instantiation is not concurrent-safe.
 var wasmMu sync.Mutex
+
+// instanceCounter provides unique names for module instances.
+var instanceCounter atomic.Uint64
 
 func New(ctx context.Context) *Loader {
 	rt := wazero.NewRuntime(ctx)
 	wasi.MustInstantiate(ctx, rt)
-	return &Loader{runtime: rt, results: make(map[uint32]string)}
+	return &Loader{runtime: rt}
 }
 
 // Close releases the Wazero runtime.
@@ -102,27 +107,15 @@ func (l *Loader) loadModule(ctx context.Context, dir string) error {
 		return fmt.Errorf("cannot read %s: %w", wasmFile, err)
 	}
 
-	// Build host module with http_get, http_post, log_message functions
+	// Build host module — may already exist from a previous module load.
 	hostBuilder := l.runtime.NewHostModuleBuilder("env")
-	hostBuilder.NewFunctionBuilder().
-		WithFunc(l.hostHTTPGet).
-		Export("http_get")
-	hostBuilder.NewFunctionBuilder().
-		WithFunc(l.hostHTTPPost).
-		Export("http_post")
-	hostBuilder.NewFunctionBuilder().
-		WithFunc(l.hostHTTPPostAuth).
-		Export("http_post_auth")
-	hostBuilder.NewFunctionBuilder().
-		WithFunc(l.hostHTTPCheck).
-		Export("http_check")
-	hostBuilder.NewFunctionBuilder().
-		WithFunc(l.hostLog).
-		Export("log_message")
-
+	hostBuilder.NewFunctionBuilder().WithFunc(l.hostHTTPGet).Export("http_get")
+	hostBuilder.NewFunctionBuilder().WithFunc(l.hostHTTPPost).Export("http_post")
+	hostBuilder.NewFunctionBuilder().WithFunc(l.hostHTTPPostAuth).Export("http_post_auth")
+	hostBuilder.NewFunctionBuilder().WithFunc(l.hostHTTPCheck).Export("http_check")
+	hostBuilder.NewFunctionBuilder().WithFunc(l.hostLog).Export("log_message")
 	if _, err := hostBuilder.Instantiate(ctx); err != nil {
-		// Host module may already exist from a previous module load — ignore duplicate error
-		_ = err
+		_ = err // ignore "already instantiated" on subsequent loads
 	}
 
 	compiled, err := l.runtime.CompileModule(ctx, wasmBytes)
@@ -130,38 +123,16 @@ func (l *Loader) loadModule(ctx context.Context, dir string) error {
 		return fmt.Errorf("compile error: %w", err)
 	}
 
-	mod, err := l.runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
-		WithName(manifest.ID).
-		WithStdout(log.Writer()).
-		WithStderr(log.Writer()))
-	if err != nil {
-		return fmt.Errorf("instantiate error: %w", err)
-	}
-
-	// Retrieve display name from module
-	displayName := manifest.ID
-	if fn := mod.ExportedFunction("module_name"); fn != nil {
-		results, err := fn.Call(ctx)
-		if err == nil && len(results) > 0 {
-			displayName = l.readModuleString(ctx, mod, uint32(results[0]))
-		}
-	}
-
-	// Retrieve config schema from module
-	var schema []widgets.ConfigField
-	if fn := mod.ExportedFunction("config_schema"); fn != nil {
-		results, err := fn.Call(ctx)
-		if err == nil && len(results) > 0 {
-			schemaJSON := l.readModuleString(ctx, mod, uint32(results[0]))
-			_ = json.Unmarshal([]byte(schemaJSON), &schema)
-		}
+	displayName := manifest.Name
+	if displayName == "" {
+		displayName = manifest.ID
 	}
 
 	w := &wasmWidget{
 		typeID:      manifest.ID,
 		displayName: displayName,
-		schema:      schema,
-		mod:         mod,
+		schema:      manifest.Schema,
+		compiled:    compiled,
 		loader:      l,
 	}
 	registry.Register(w)
@@ -169,59 +140,23 @@ func (l *Loader) loadModule(ctx context.Context, dir string) error {
 	return nil
 }
 
-// readModuleString reads a null-terminated or length-prefixed string from WASM memory.
-// Our convention: the module exports get_output_ptr/get_output_len after each call.
-func (l *Loader) readModuleString(ctx context.Context, mod api.Module, _ uint32) string {
-	ptrFn := mod.ExportedFunction("get_output_ptr")
-	lenFn := mod.ExportedFunction("get_output_len")
-	if ptrFn == nil || lenFn == nil {
-		return ""
-	}
-	ptrRes, _ := ptrFn.Call(ctx)
-	lenRes, _ := lenFn.Call(ctx)
-	if len(ptrRes) == 0 || len(lenRes) == 0 {
-		return ""
-	}
-	ptr := uint32(ptrRes[0])
-	length := uint32(lenRes[0])
-	b, ok := mod.Memory().Read(ptr, length)
-	if !ok {
-		return ""
-	}
-	return string(b)
-}
+// callRender spawns a fresh module instance, pipes configJSON via stdin, and
+// captures rendered HTML from stdout. This is the correct wasip1 "command" model.
+func (l *Loader) callRender(ctx context.Context, compiled wazero.CompiledModule, moduleID string, configJSON []byte) string {
+	var stdout bytes.Buffer
 
-// callRender writes config JSON into WASM memory, calls render(), reads output.
-func (l *Loader) callRender(ctx context.Context, mod api.Module, configJSON []byte) string {
-	allocFn := mod.ExportedFunction("alloc")
-	renderFn := mod.ExportedFunction("render")
-	if renderFn == nil {
-		return "<p>widget has no render function</p>"
-	}
-
-	var cfgPtr, cfgLen uint64
-	if allocFn != nil {
-		res, err := allocFn.Call(ctx, uint64(len(configJSON)))
-		if err != nil || len(res) == 0 {
-			return "<p>alloc failed</p>"
-		}
-		cfgPtr = res[0]
-		cfgLen = uint64(len(configJSON))
-		if !mod.Memory().Write(uint32(cfgPtr), configJSON) {
-			return "<p>memory write failed</p>"
-		}
-	} else {
-		// Module doesn't export alloc — write to a fixed offset (offset 0 after stack)
-		cfgPtr = 65536
-		cfgLen = uint64(len(configJSON))
-		mod.Memory().Write(uint32(cfgPtr), configJSON)
-	}
-
-	if _, err := renderFn.Call(ctx, cfgPtr, cfgLen); err != nil {
+	name := fmt.Sprintf("%s-%d", moduleID, instanceCounter.Add(1))
+	mod, err := l.runtime.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
+		WithName(name).
+		WithStdin(bytes.NewReader(configJSON)).
+		WithStdout(&stdout).
+		WithStderr(log.Writer()))
+	if err != nil {
 		return fmt.Sprintf("<p>render error: %s</p>", err.Error())
 	}
+	defer mod.Close(ctx)
 
-	return l.readModuleString(ctx, mod, 0)
+	return stdout.String()
 }
 
 // safeExternalURL returns an error if rawURL targets a private/loopback address
@@ -294,14 +229,6 @@ func (l *Loader) hostHTTPPost(ctx context.Context, mod api.Module, urlPtr, urlLe
 	return uint32(len(result))
 }
 
-func (l *Loader) hostLog(_ context.Context, mod api.Module, msgPtr, msgLen uint32) {
-	b, ok := mod.Memory().Read(msgPtr, msgLen)
-	if !ok {
-		return
-	}
-	log.Printf("[wasm/%s] %s", mod.Name(), string(b))
-}
-
 func (l *Loader) hostHTTPPostAuth(ctx context.Context, mod api.Module, urlPtr, urlLen, bodyPtr, bodyLen, authPtr, authLen, resultPtr uint32) uint32 {
 	urlBytes, ok := mod.Memory().Read(urlPtr, urlLen)
 	if !ok {
@@ -346,7 +273,13 @@ func (l *Loader) hostHTTPCheck(_ context.Context, mod api.Module, urlPtr, urlLen
 		log.Printf("[wasm/%s] http_check blocked: %v", mod.Name(), err)
 		return 0
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	// Skip TLS verification so self-signed certs on internal servers don't cause false DOWN.
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+	}
 	req, err := http.NewRequest("HEAD", rawURL, nil) //nolint:gosec
 	if err != nil {
 		return 0
@@ -362,6 +295,14 @@ func (l *Loader) hostHTTPCheck(_ context.Context, mod api.Module, urlPtr, urlLen
 		rtt = 1
 	}
 	return rtt
+}
+
+func (l *Loader) hostLog(_ context.Context, mod api.Module, msgPtr, msgLen uint32) {
+	b, ok := mod.Memory().Read(msgPtr, msgLen)
+	if !ok {
+		return
+	}
+	log.Printf("[wasm/%s] %s", mod.Name(), string(b))
 }
 
 func byteReader(b []byte) io.Reader {
@@ -387,7 +328,7 @@ type wasmWidget struct {
 	typeID      string
 	displayName string
 	schema      []widgets.ConfigField
-	mod         api.Module
+	compiled    wazero.CompiledModule
 	loader      *Loader
 }
 
@@ -401,7 +342,7 @@ func (w *wasmWidget) Render(ctx context.Context, inst widgets.WidgetInstance) te
 func (w *wasmWidget) RenderContent(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
 	configJSON, _ := json.Marshal(inst.Settings)
 	wasmMu.Lock()
-	html := w.loader.callRender(ctx, w.mod, configJSON)
+	html := w.loader.callRender(ctx, w.compiled, w.typeID, configJSON)
 	wasmMu.Unlock()
 	return templ.Raw(html)
 }
