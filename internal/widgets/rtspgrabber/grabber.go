@@ -1,14 +1,12 @@
 package rtspgrabber
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -39,82 +37,194 @@ func detectDirectKind(u string) directKind {
 	return directMJPEG
 }
 
-// ── go2rtc process manager (singleton) ───────────────────────────────────────
+// ── Per-stream FFmpeg worker ──────────────────────────────────────────────────
 
-type go2rtcManager struct {
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	baseURL string
-	running bool
+type subscriber struct {
+	ch chan []byte
 }
 
-var g2m = &go2rtcManager{}
+type frameWorker struct {
+	mu       sync.Mutex
+	frame    []byte     // most recent JPEG
+	subs     []*subscriber
+	lastUsed time.Time
+	cancel   context.CancelFunc
+	running  bool
+	srcURL   string
+}
 
-// ensure starts go2rtc if it is not already running.
-// If go2rtc is already reachable at the configured port (started externally), it skips the launch.
-func (m *go2rtcManager) ensure(binPath, port string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+var (
+	workersMu sync.Mutex
+	workerMap = map[string]*frameWorker{}
+)
 
-	if m.running {
-		return nil
+func getWorker(srcURL string) *frameWorker {
+	workersMu.Lock()
+	fw, ok := workerMap[srcURL]
+	if !ok {
+		fw = &frameWorker{srcURL: srcURL, lastUsed: time.Now()}
+		workerMap[srcURL] = fw
 	}
+	workersMu.Unlock() // release before locking fw.mu to avoid deadlock with run()
 
-	baseURL := "http://127.0.0.1:" + port
-
-	// Already running externally — just adopt it.
-	if ping(baseURL) {
-		m.running = true
-		m.baseURL = baseURL
-		return nil
+	fw.mu.Lock()
+	fw.lastUsed = time.Now()
+	if !fw.running {
+		fw.running = true
+		ctx, cancel := context.WithCancel(context.Background())
+		fw.cancel = cancel
+		go fw.run(ctx)
 	}
+	fw.mu.Unlock()
+	return fw
+}
 
-	// Write a minimal config so go2rtc listens on the chosen port.
-	cfgPath := filepath.Join(os.TempDir(), "lala-go2rtc.yaml")
-	cfgContent := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\nffmpeg:\n  bin: ffmpeg\n", port)
-	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0600); err != nil {
-		return fmt.Errorf("error escribiendo config go2rtc: %w", err)
+func (fw *frameWorker) subscribe() *subscriber {
+	sub := &subscriber{ch: make(chan []byte, 1)}
+	fw.mu.Lock()
+	// Send latest frame immediately so the subscriber doesn't wait for the next one.
+	if fw.frame != nil {
+		sub.ch <- fw.frame
 	}
+	fw.subs = append(fw.subs, sub)
+	fw.mu.Unlock()
+	return sub
+}
 
-	cmd := exec.Command(binPath, "-config", cfgPath) //nolint:gosec
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("no se pudo iniciar go2rtc (%q): %w", binPath, err)
-	}
-	m.cmd = cmd
-	m.baseURL = baseURL
-
-	// Wait up to 5 s for go2rtc to accept connections.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if ping(baseURL) {
-			m.running = true
-			return nil
+func (fw *frameWorker) unsubscribe(sub *subscriber) {
+	fw.mu.Lock()
+	for i, s := range fw.subs {
+		if s == sub {
+			fw.subs = append(fw.subs[:i], fw.subs[i+1:]...)
+			break
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
-
-	m.cmd.Process.Kill() //nolint:errcheck
-	m.cmd = nil
-	return fmt.Errorf("go2rtc no respondió en 5 s (¿binario en '%s'?)", binPath)
+	fw.mu.Unlock()
 }
 
-func ping(baseURL string) bool {
-	client := &http.Client{Timeout: 500 * time.Millisecond}
-	resp, err := client.Get(baseURL + "/api")
-	if err != nil {
-		return false
+func (fw *frameWorker) broadcast(frame []byte) {
+	fw.mu.Lock()
+	fw.frame = frame
+	fw.lastUsed = time.Now()
+	for _, s := range fw.subs {
+		select {
+		case s.ch <- frame:
+		default:
+			// Subscriber is slow — overwrite with latest frame.
+			select {
+			case <-s.ch:
+			default:
+			}
+			s.ch <- frame
+		}
 	}
-	resp.Body.Close()
-	return resp.StatusCode < 500
+	fw.mu.Unlock()
+}
+
+const idleTimeout = 60 * time.Second
+const ffmpegBackoff = 3 * time.Second
+
+func (fw *frameWorker) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Stop if no subscribers and idle for a while.
+		fw.mu.Lock()
+		idle := len(fw.subs) == 0 && time.Since(fw.lastUsed) > idleTimeout
+		fw.mu.Unlock()
+		if idle {
+			fw.mu.Lock()
+			fw.running = false
+			fw.mu.Unlock()
+			workersMu.Lock()
+			delete(workerMap, fw.srcURL)
+			workersMu.Unlock()
+			return
+		}
+
+		fw.runFFmpeg(ctx)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(ffmpegBackoff):
+		}
+	}
+}
+
+var soiMarker = []byte{0xFF, 0xD8}
+var eoiMarker = []byte{0xFF, 0xD9}
+
+func (fw *frameWorker) runFFmpeg(ctx context.Context) {
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-hide_banner", "-loglevel", "error",
+		"-rtsp_transport", "tcp",
+		"-i", fw.srcURL,
+		"-f", "mjpeg",
+		"-r", "2",
+		"-q:v", "15",
+		"pipe:1",
+	)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		return
+	}
+	fw.parseMJPEGStream(ctx, stdout)
+	cmd.Wait() //nolint:errcheck
+}
+
+func (fw *frameWorker) parseMJPEGStream(ctx context.Context, r io.Reader) {
+	buf := make([]byte, 0, 512*1024)
+	tmp := make([]byte, 32*1024)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		n, err := r.Read(tmp)
+		if n > 0 {
+			buf = append(buf, tmp[:n]...)
+			for {
+				soiIdx := bytes.Index(buf, soiMarker)
+				if soiIdx < 0 {
+					buf = buf[:0]
+					break
+				}
+				if soiIdx > 0 {
+					buf = buf[soiIdx:]
+				}
+				eoiIdx := bytes.Index(buf[2:], eoiMarker)
+				if eoiIdx < 0 {
+					if len(buf) > 8*1024*1024 {
+						buf = buf[:0]
+					}
+					break
+				}
+				end := 2 + eoiIdx + 2
+				frame := make([]byte, end)
+				copy(frame, buf[:end])
+				buf = buf[end:]
+				fw.broadcast(frame)
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 
-type RTSPGrabberWidget struct {
-	registered sync.Map // key: baseURL+"|"+streamName → struct{}
-}
+type RTSPGrabberWidget struct{}
 
 func (w *RTSPGrabberWidget) TypeID() string      { return "rtsp-grabber" }
 func (w *RTSPGrabberWidget) DisplayName() string { return "Cámara RTSP / HTTP" }
@@ -123,7 +233,7 @@ func (w *RTSPGrabberWidget) Render(ctx context.Context, inst widgets.WidgetInsta
 	return w.RenderContent(ctx, inst)
 }
 
-func (w *RTSPGrabberWidget) RenderContent(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
+func (w *RTSPGrabberWidget) RenderContent(_ context.Context, inst widgets.WidgetInstance) templ.Component {
 	streamURL := inst.Setting("stream_url", inst.Setting("rtsp_url", ""))
 	if streamURL == "" {
 		return rtspError("Configura la URL del stream")
@@ -132,58 +242,48 @@ func (w *RTSPGrabberWidget) RenderContent(ctx context.Context, inst widgets.Widg
 	switch inst.Setting("stream_type", "rtsp") {
 	case "http":
 		return rtspDirect(streamURL, detectDirectKind(streamURL))
-
 	default: // "rtsp"
-		binPath := inst.Setting("go2rtc_bin", "go2rtc")
-		port := inst.Setting("go2rtc_port", "1984")
-
-		if err := g2m.ensure(binPath, port); err != nil {
-			return rtspError(err.Error())
-		}
-
-		go w.ensureStream(g2m.baseURL, inst.ID, streamURL)
+		getWorker(streamURL) // warm up the worker
 		return rtspStream(inst.ID)
 	}
 }
 
-// ServeFrame proxies the MJPEG stream from go2rtc to the browser.
-// The browser keeps this connection open and displays live video natively via <img>.
+// ServeFrame streams MJPEG frames from the persistent FFmpeg worker.
 func (w *RTSPGrabberWidget) ServeFrame(rw http.ResponseWriter, r *http.Request, inst widgets.WidgetInstance) {
-	g2m.mu.Lock()
-	running := g2m.running
-	baseURL := g2m.baseURL
-	g2m.mu.Unlock()
-
-	if !running {
-		http.Error(rw, "go2rtc no está corriendo", http.StatusServiceUnavailable)
+	streamURL := inst.Setting("stream_url", inst.Setting("rtsp_url", ""))
+	if streamURL == "" {
+		http.Error(rw, "stream_url no configurada", http.StatusServiceUnavailable)
 		return
 	}
 
-	if src := inst.Setting("stream_url", ""); src != "" {
-		w.ensureStream(baseURL, inst.ID, src)
-	}
+	fw := getWorker(streamURL)
+	sub := fw.subscribe()
+	defer fw.unsubscribe(sub)
 
-	mjpegURL := fmt.Sprintf("%s/api/stream.mjpeg?src=%s", baseURL, url.QueryEscape(inst.ID))
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, mjpegURL, nil)
-	if err != nil {
-		http.Error(rw, "internal error", http.StatusInternalServerError)
-		return
-	}
+	rw.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+	rw.Header().Set("Cache-Control", "no-cache")
+	rw.WriteHeader(http.StatusOK)
 
-	resp, err := (&http.Client{Timeout: 0}).Do(req)
-	if err != nil {
-		http.Error(rw, "go2rtc unavailable: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer resp.Body.Close()
+	flusher, canFlush := rw.(http.Flusher)
 
-	for k, vs := range resp.Header {
-		for _, v := range vs {
-			rw.Header().Add(k, v)
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case frame, ok := <-sub.ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(rw, "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", len(frame))
+			if _, err := rw.Write(frame); err != nil {
+				return
+			}
+			rw.Write([]byte("\r\n")) //nolint:errcheck
+			if canFlush {
+				flusher.Flush()
+			}
 		}
 	}
-	rw.WriteHeader(resp.StatusCode)
-	io.Copy(rw, resp.Body) //nolint:errcheck
 }
 
 func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
@@ -203,52 +303,5 @@ func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
 			Required:    true,
 			Placeholder: "rtsp://user:pass@192.168.1.10:554/stream1",
 		},
-		{
-			Key:         "go2rtc_bin",
-			Label:       "Binario go2rtc (solo modo RTSP)",
-			Type:        "text",
-			Default:     "go2rtc",
-			Placeholder: "go2rtc  o  /usr/local/bin/go2rtc",
-		},
-		{
-			Key:         "go2rtc_port",
-			Label:       "Puerto go2rtc (solo modo RTSP)",
-			Type:        "number",
-			Default:     "1984",
-			Placeholder: "1984",
-		},
-	}
-}
-
-// ensureStream registers the RTSP source in go2rtc once per widget instance.
-// Uses a ffmpeg: source so go2rtc can transcode H264 → JPEG for MJPEG delivery.
-// Uses PUT /api/streams?name=&src= — idempotent in go2rtc.
-func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
-	key := baseURL + "|" + name
-	if _, ok := w.registered.Load(key); ok {
-		return
-	}
-
-	// ffmpeg: prefix tells go2rtc to use FFmpeg to transcode; #video=mjpeg requests JPEG output.
-	ffmpegSrc := "ffmpeg:" + src + "#video=mjpeg"
-	apiURL := fmt.Sprintf("%s/api/streams?name=%s&src=%s",
-		baseURL,
-		url.QueryEscape(name),
-		url.QueryEscape(ffmpegSrc),
-	)
-	req, err := http.NewRequest(http.MethodPut, apiURL, nil)
-	if err != nil {
-		return
-	}
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
-	if err != nil {
-		return
-	}
-	resp.Body.Close()
-
-	// go2rtc returns 400 when it can't update the config file on disk, but still
-	// registers the stream in memory — treat any non-5xx response as success.
-	if resp.StatusCode < 500 {
-		w.registered.Store(key, struct{}{})
 	}
 }
