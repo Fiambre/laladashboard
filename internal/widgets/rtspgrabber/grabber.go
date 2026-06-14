@@ -1,11 +1,15 @@
 package rtspgrabber
 
 import (
-	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
-	"strconv"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,152 +22,228 @@ func init() {
 	registry.Register(&RTSPGrabberWidget{})
 }
 
-type RTSPGrabberWidget struct {
-	workers sync.Map
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
+type directKind string
+
+const (
+	directMJPEG directKind = "mjpeg"
+	directHLS   directKind = "hls"
+)
+
+func detectDirectKind(u string) directKind {
+	lower := strings.ToLower(u)
+	if strings.HasSuffix(lower, ".m3u8") || strings.Contains(lower, ".m3u8?") {
+		return directHLS
+	}
+	return directMJPEG
 }
 
-type frameWorker struct {
-	mu       sync.RWMutex
-	frame    []byte
-	lastUsed time.Time
-	cancel   context.CancelFunc
-	active   bool
+// ── go2rtc process manager (singleton) ───────────────────────────────────────
+
+type go2rtcManager struct {
+	mu      sync.Mutex
+	cmd     *exec.Cmd
+	baseURL string
+	running bool
+}
+
+var g2m = &go2rtcManager{}
+
+// ensure starts go2rtc if it is not already running.
+// If go2rtc is already reachable at the configured port (started externally), it skips the launch.
+func (m *go2rtcManager) ensure(binPath, port string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.running {
+		return nil
+	}
+
+	baseURL := "http://127.0.0.1:" + port
+
+	// Already running externally — just adopt it.
+	if ping(baseURL) {
+		m.running = true
+		m.baseURL = baseURL
+		return nil
+	}
+
+	// Write a minimal config so go2rtc listens on the chosen port.
+	cfgPath := filepath.Join(os.TempDir(), "lala-go2rtc.yaml")
+	cfgContent := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\n", port)
+	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0600); err != nil {
+		return fmt.Errorf("error escribiendo config go2rtc: %w", err)
+	}
+
+	cmd := exec.Command(binPath, "-config", cfgPath) //nolint:gosec
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("no se pudo iniciar go2rtc (%q): %w", binPath, err)
+	}
+	m.cmd = cmd
+	m.baseURL = baseURL
+
+	// Wait up to 5 s for go2rtc to accept connections.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if ping(baseURL) {
+			m.running = true
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	m.cmd.Process.Kill() //nolint:errcheck
+	m.cmd = nil
+	return fmt.Errorf("go2rtc no respondió en 5 s (¿binario en '%s'?)", binPath)
+}
+
+func ping(baseURL string) bool {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get(baseURL + "/api")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode < 500
+}
+
+// ── Widget ────────────────────────────────────────────────────────────────────
+
+type RTSPGrabberWidget struct {
+	registered sync.Map // key: baseURL+"|"+streamName → struct{}
 }
 
 func (w *RTSPGrabberWidget) TypeID() string      { return "rtsp-grabber" }
-func (w *RTSPGrabberWidget) DisplayName() string { return "Cámara RTSP" }
+func (w *RTSPGrabberWidget) DisplayName() string { return "Cámara RTSP / HTTP" }
 
 func (w *RTSPGrabberWidget) Render(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
 	return w.RenderContent(ctx, inst)
 }
 
 func (w *RTSPGrabberWidget) RenderContent(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
-	rtspURL := inst.Setting("rtsp_url", "")
-	if rtspURL == "" {
-		return rtspError("Configura la URL RTSP")
+	streamURL := inst.Setting("stream_url", "")
+	if streamURL == "" {
+		return rtspError("Configura la URL del stream")
 	}
 
-	refreshMs := 1000
-	if n, err := strconv.Atoi(inst.Setting("refresh_ms", "1000")); err == nil && n >= 100 {
-		refreshMs = n
+	switch inst.Setting("stream_type", "rtsp") {
+	case "http":
+		return rtspDirect(streamURL, detectDirectKind(streamURL))
+
+	default: // "rtsp"
+		binPath := inst.Setting("go2rtc_bin", "go2rtc")
+		port := inst.Setting("go2rtc_port", "1984")
+
+		if err := g2m.ensure(binPath, port); err != nil {
+			return rtspError(err.Error())
+		}
+
+		go w.ensureStream(g2m.baseURL, inst.ID, streamURL)
+		return rtspStream(inst.ID)
 	}
-
-	w.touchWorker(inst.ID, rtspURL, refreshMs)
-
-	return rtspContent(inst.ID, strconv.Itoa(refreshMs))
 }
 
+// ServeFrame proxies the MJPEG stream from go2rtc to the browser.
+// The browser keeps this connection open and displays live video natively via <img>.
 func (w *RTSPGrabberWidget) ServeFrame(rw http.ResponseWriter, r *http.Request, inst widgets.WidgetInstance) {
-	val, ok := w.workers.Load(inst.ID)
-	if !ok {
-		http.Error(rw, "no frame available", http.StatusServiceUnavailable)
-		return
-	}
-	worker := val.(*frameWorker)
+	g2m.mu.Lock()
+	running := g2m.running
+	baseURL := g2m.baseURL
+	g2m.mu.Unlock()
 
-	worker.mu.Lock()
-	worker.lastUsed = time.Now()
-	frame := worker.frame
-	worker.mu.Unlock()
-
-	if len(frame) == 0 {
-		http.Error(rw, "no frame yet", http.StatusServiceUnavailable)
+	if !running {
+		http.Error(rw, "go2rtc no está corriendo", http.StatusServiceUnavailable)
 		return
 	}
 
-	rw.Header().Set("Content-Type", "image/jpeg")
-	rw.Header().Set("Cache-Control", "no-store")
-	rw.Write(frame) //nolint:errcheck
+	if src := inst.Setting("stream_url", ""); src != "" {
+		w.ensureStream(baseURL, inst.ID, src)
+	}
+
+	mjpegURL := fmt.Sprintf("%s/%s/mjpeg", baseURL, url.PathEscape(inst.ID))
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, mjpegURL, nil)
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := (&http.Client{Timeout: 0}).Do(req)
+	if err != nil {
+		http.Error(rw, "go2rtc unavailable: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	for k, vs := range resp.Header {
+		for _, v := range vs {
+			rw.Header().Add(k, v)
+		}
+	}
+	rw.WriteHeader(resp.StatusCode)
+	io.Copy(rw, resp.Body) //nolint:errcheck
 }
 
 func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
 	return []widgets.ConfigField{
-		{Key: "rtsp_url", Label: "URL RTSP", Type: "text", Required: true, Placeholder: "rtsp://user:pass@host:554/stream1"},
-		{Key: "refresh_ms", Label: "Intervalo (ms)", Type: "number", Default: "1000", Placeholder: "1000"},
+		{
+			Key:      "stream_type",
+			Label:    "Tipo de stream",
+			Type:     "select",
+			Required: true,
+			Default:  "rtsp",
+			Options:  []string{"rtsp", "http"},
+		},
+		{
+			Key:         "stream_url",
+			Label:       "URL del stream",
+			Type:        "text",
+			Required:    true,
+			Placeholder: "rtsp://user:pass@192.168.1.10:554/stream1",
+		},
+		{
+			Key:         "go2rtc_bin",
+			Label:       "Binario go2rtc (solo modo RTSP)",
+			Type:        "text",
+			Default:     "go2rtc",
+			Placeholder: "go2rtc  o  /usr/local/bin/go2rtc",
+		},
+		{
+			Key:         "go2rtc_port",
+			Label:       "Puerto go2rtc (solo modo RTSP)",
+			Type:        "number",
+			Default:     "1984",
+			Placeholder: "1984",
+		},
 	}
 }
 
-func (w *RTSPGrabberWidget) touchWorker(instID, rtspURL string, refreshMs int) {
-	val, _ := w.workers.LoadOrStore(instID, &frameWorker{lastUsed: time.Now()})
-	worker := val.(*frameWorker)
-
-	worker.mu.Lock()
-	worker.lastUsed = time.Now()
-	if !worker.active {
-		worker.active = true
-		ctx, cancel := context.WithCancel(context.Background())
-		worker.cancel = cancel
-		worker.mu.Unlock()
-		go worker.run(ctx, rtspURL, refreshMs)
+// ensureStream registers the RTSP source in go2rtc once per widget instance.
+// Uses PUT /api/streams?name=&src= — idempotent in go2rtc.
+func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
+	key := baseURL + "|" + name
+	if _, ok := w.registered.Load(key); ok {
 		return
 	}
-	worker.mu.Unlock()
-}
 
-func (fw *frameWorker) run(ctx context.Context, rtspURL string, refreshMs int) {
-	defer func() {
-		fw.mu.Lock()
-		fw.active = false
-		fw.mu.Unlock()
-	}()
-
-	if refreshMs < 100 {
-		refreshMs = 1000
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		fw.mu.RLock()
-		idle := time.Since(fw.lastUsed) > 60*time.Second
-		fw.mu.RUnlock()
-		if idle {
-			return
-		}
-
-		start := time.Now()
-		frame, err := captureFrame(ctx, rtspURL)
-		if err == nil && len(frame) > 0 {
-			fw.mu.Lock()
-			fw.frame = frame
-			fw.mu.Unlock()
-		}
-
-		// Wait remaining time so capture cycle matches refreshMs
-		elapsed := time.Since(start)
-		wait := time.Duration(refreshMs)*time.Millisecond - elapsed
-		if wait > 0 {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(wait):
-			}
-		}
-	}
-}
-
-func captureFrame(ctx context.Context, rtspURL string) ([]byte, error) {
-	captureCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(captureCtx, "ffmpeg",
-		"-rtsp_transport", "tcp",
-		"-i", rtspURL,
-		"-vframes", "1",
-		"-f", "image2",
-		"-vcodec", "mjpeg",
-		"-q:v", "5",
-		"-loglevel", "error",
-		"pipe:1",
+	apiURL := fmt.Sprintf("%s/api/streams?name=%s&src=%s",
+		baseURL,
+		url.QueryEscape(name),
+		url.QueryEscape(src),
 	)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	req, err := http.NewRequest(http.MethodPut, apiURL, nil)
+	if err != nil {
+		return
 	}
-	return out.Bytes(), nil
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode < 300 {
+		w.registered.Store(key, struct{}{})
+	}
 }
