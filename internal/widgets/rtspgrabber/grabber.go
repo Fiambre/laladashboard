@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	// net is used only for net.SplitHostPort
 
 	"github.com/a-h/templ"
 	"github.com/rfguerreroa/laladashboard/internal/registry"
@@ -68,7 +69,7 @@ func (m *go2rtcManager) ensure(binPath, apiPort string) error {
 	}
 
 	cfgPath := filepath.Join(os.TempDir(), "lala-go2rtc.yaml")
-	cfg := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\nwebrtc:\n  ice_servers:\n    - urls: [stun:stun.l.google.com:19302]\n", apiPort)
+	cfg := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\nwebrtc:\n  candidates:\n    - stun:8555\n  ice_servers:\n    - urls: [stun:stun.l.google.com:19302]\n", apiPort)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0600); err != nil {
 		return fmt.Errorf("go2rtc config: %w", err)
 	}
@@ -104,52 +105,7 @@ func pingGo2rtc(baseURL string) bool {
 	return resp.StatusCode < 500
 }
 
-// ── SDP rewriting ─────────────────────────────────────────────────────────────
-
-// Docker bridge networks whose IPs should be replaced with the actual host IP
-// so the browser can reach go2rtc's WebRTC port directly.
-var dockerNets []*net.IPNet
-
-func init() {
-	for _, cidr := range []string{"172.16.0.0/12", "127.0.0.0/8"} {
-		_, n, _ := net.ParseCIDR(cidr)
-		if n != nil {
-			dockerNets = append(dockerNets, n)
-		}
-	}
-}
-
-func isDockerIP(ip net.IP) bool {
-	for _, n := range dockerNets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
-
-// rewriteSDPCandidates replaces Docker-internal IPs in ICE candidate lines
-// with hostIP so the browser can reach the media port from outside Docker.
-func rewriteSDPCandidates(sdp, hostIP string) string {
-	lines := strings.Split(sdp, "\n")
-	for i, line := range lines {
-		clean := strings.TrimRight(line, "\r")
-		if !strings.HasPrefix(clean, "a=candidate:") {
-			continue
-		}
-		// Format: a=candidate:<f> <c> <proto> <prio> <ip> <port> typ <type> [...]
-		fields := strings.Fields(clean)
-		if len(fields) < 8 {
-			continue
-		}
-		ip := net.ParseIP(fields[4])
-		if ip != nil && isDockerIP(ip) {
-			fields[4] = hostIP
-			lines[i] = strings.Join(fields, " ")
-		}
-	}
-	return strings.Join(lines, "\n")
-}
+// ── SDP patching ─────────────────────────────────────────────────────────────
 
 func extractHostIP(host string) string {
 	h, _, err := net.SplitHostPort(host)
@@ -157,6 +113,48 @@ func extractHostIP(host string) string {
 		return host
 	}
 	return h
+}
+
+// injectHostCandidate adds a host ICE candidate with the actual host IP and
+// the go2rtc WebRTC port to the SDP answer.
+//
+// go2rtc runs inside Docker and discovers its external IP via STUN, but the
+// STUN-reported port is a random ephemeral NAT port (not the exposed port 8555).
+// The browser cannot reach that random port. By injecting a host candidate with
+// the request's host IP and the known exposed port, we give the browser a
+// reachable endpoint for WebRTC media.
+func injectHostCandidate(sdp, hostIP, port string) string {
+	// Parse ice-ufrag so our candidate matches the session.
+	ufrag := ""
+	for _, line := range strings.Split(sdp, "\n") {
+		clean := strings.TrimRight(line, "\r")
+		if strings.HasPrefix(clean, "a=ice-ufrag:") {
+			ufrag = strings.TrimPrefix(clean, "a=ice-ufrag:")
+			break
+		}
+	}
+
+	cand := fmt.Sprintf("a=candidate:1 1 udp 2130706431 %s %s typ host", hostIP, port)
+	if ufrag != "" {
+		cand += " ufrag " + ufrag
+	}
+
+	// Insert after the last existing candidate line.
+	lines := strings.Split(sdp, "\n")
+	lastCand := -1
+	for i, l := range lines {
+		if strings.HasPrefix(strings.TrimRight(l, "\r"), "a=candidate:") {
+			lastCand = i
+		}
+	}
+	if lastCand >= 0 {
+		out := make([]string, 0, len(lines)+1)
+		out = append(out, lines[:lastCand+1]...)
+		out = append(out, cand)
+		out = append(out, lines[lastCand+1:]...)
+		return strings.Join(out, "\n")
+	}
+	return sdp + "\n" + cand + "\n"
 }
 
 // ── Widget ────────────────────────────────────────────────────────────────────
@@ -245,7 +243,7 @@ func (w *RTSPGrabberWidget) ServeWebRTC(rw http.ResponseWriter, r *http.Request,
 	}
 
 	hostIP := extractHostIP(r.Host)
-	answer := rewriteSDPCandidates(string(answerBytes), hostIP)
+	answer := injectHostCandidate(string(answerBytes), hostIP, "8555")
 
 	rw.Header().Set("Content-Type", "application/sdp")
 	rw.WriteHeader(http.StatusOK)
