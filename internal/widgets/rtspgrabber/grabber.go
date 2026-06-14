@@ -238,7 +238,7 @@ func (w *RTSPGrabberWidget) ServeWebRTC(rw http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		rw.WriteHeader(resp.StatusCode)
 		rw.Write(answerBytes) //nolint:errcheck
 		return
