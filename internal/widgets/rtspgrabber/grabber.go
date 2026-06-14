@@ -71,7 +71,7 @@ func (m *go2rtcManager) ensure(binPath, port string) error {
 
 	// Write a minimal config so go2rtc listens on the chosen port.
 	cfgPath := filepath.Join(os.TempDir(), "lala-go2rtc.yaml")
-	cfgContent := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\n", port)
+	cfgContent := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\nffmpeg:\n  bin: ffmpeg\n", port)
 	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0600); err != nil {
 		return fmt.Errorf("error escribiendo config go2rtc: %w", err)
 	}
@@ -221,6 +221,7 @@ func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
 }
 
 // ensureStream registers the RTSP source in go2rtc once per widget instance.
+// Uses a ffmpeg: source so go2rtc can transcode H264 → JPEG for MJPEG delivery.
 // Uses PUT /api/streams?name=&src= — idempotent in go2rtc.
 func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
 	key := baseURL + "|" + name
@@ -228,10 +229,12 @@ func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
 		return
 	}
 
+	// ffmpeg: prefix tells go2rtc to use FFmpeg to transcode; #video=mjpeg requests JPEG output.
+	ffmpegSrc := "ffmpeg:" + src + "#video=mjpeg"
 	apiURL := fmt.Sprintf("%s/api/streams?name=%s&src=%s",
 		baseURL,
 		url.QueryEscape(name),
-		url.QueryEscape(src),
+		url.QueryEscape(ffmpegSrc),
 	)
 	req, err := http.NewRequest(http.MethodPut, apiURL, nil)
 	if err != nil {
@@ -243,7 +246,9 @@ func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
 	}
 	resp.Body.Close()
 
-	if resp.StatusCode < 300 {
+	// go2rtc returns 400 when it can't update the config file on disk, but still
+	// registers the stream in memory — treat any non-5xx response as success.
+	if resp.StatusCode < 500 {
 		w.registered.Store(key, struct{}{})
 	}
 }
