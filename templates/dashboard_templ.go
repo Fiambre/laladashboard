@@ -26,18 +26,18 @@ func initDashboardVersion(v int64) templ.ComponentScript {
 
 func initStaticGrid() templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_initStaticGrid_c05c`,
-		Function: `function __templ_initStaticGrid_c05c(){GridStack.init({
+		Name: `__templ_initStaticGrid_4e4b`,
+		Function: `function __templ_initStaticGrid_4e4b(){GridStack.init({
 		column: 12,
-		cellHeight: 80,
+		cellHeight: 40,
 		animate: false,
 		staticGrid: true,
 		disableResize: true,
 		disableDrag: true,
 	});
 }`,
-		Call:       templ.SafeScript(`__templ_initStaticGrid_c05c`),
-		CallInline: templ.SafeScriptInline(`__templ_initStaticGrid_c05c`),
+		Call:       templ.SafeScript(`__templ_initStaticGrid_4e4b`),
+		CallInline: templ.SafeScriptInline(`__templ_initStaticGrid_4e4b`),
 	}
 }
 

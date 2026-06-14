@@ -1,0 +1,11 @@
+package bashrunner
+
+templ bashContent(output string) {
+	<div class="bash-runner-widget">
+		<pre class="bash-output">{ output }</pre>
+	</div>
+}
+
+templ bashError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}

@@ -1,0 +1,25 @@
+package uptimechart
+
+import "strconv"
+
+templ uptimeContent(label string, bars []barInfo, uptimePct string, days int) {
+	<div class="uptime-widget">
+		<div class="uptime-header">
+			<span class="uptime-label">{ label }</span>
+			<span class="uptime-pct">{ uptimePct } Uptime</span>
+		</div>
+		<div class="uptime-bars">
+			for _, bar := range bars {
+				<div class={ "uptime-bar uptime-" + bar.Color } title={ bar.Title }></div>
+			}
+		</div>
+		<div class="uptime-footer">
+			<span>{ strconv.Itoa(days) } días atrás</span>
+			<span>Hoy</span>
+		</div>
+	</div>
+}
+
+templ uptimeError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}

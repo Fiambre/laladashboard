@@ -19,7 +19,11 @@ func New(store *config.Store, reg *registry.Registry, loader *moduleloader.Loade
 	r.Use(middleware.Compress(5))
 
 	staticSub, _ := fs.Sub(staticFS, "static")
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	staticServer := http.StripPrefix("/static/", http.FileServer(http.FS(staticSub)))
+	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		staticServer.ServeHTTP(w, r)
+	}))
 
 	r.Get("/", handlers.Dashboard(store, reg))
 	r.Get("/config", handlers.ConfigPage(store, reg))
@@ -36,6 +40,7 @@ func New(store *config.Store, reg *registry.Registry, loader *moduleloader.Loade
 	r.Get("/api/config-version", handlers.GetConfigVersion(store))
 
 	r.Get("/widgets/{widgetID}/content", handlers.WidgetContent(store, reg))
+	r.Get("/widgets/{widgetID}/frame", handlers.WidgetFrame(store, reg))
 
 	return r
 }

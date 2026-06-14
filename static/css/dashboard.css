@@ -53,7 +53,7 @@ body > .grid-stack {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  overflow: visible;
+  overflow: hidden;
   padding: 8px;
 }
 
@@ -164,6 +164,28 @@ body:hover .config-link { opacity: 1; }
 /* ── Iframe Widget ── */
 .iframe-widget { width: 100%; height: 100%; min-height: 300px; }
 .iframe-widget iframe { width: 100%; height: 100%; min-height: 300px; border: none; }
+
+/* ── RTSP Grabber ── */
+.rtsp-grabber-widget { width: 100%; height: 100%; min-height: 200px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }
+.rtsp-grabber-widget img { width: 100%; height: 100%; object-fit: fill; display: block; }
+
+/* ── Uptime Chart ── */
+.uptime-widget { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.5rem; flex: 1; min-height: 0; box-sizing: border-box; }
+.uptime-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; flex-shrink: 0; }
+.uptime-label { font-size: 0.78rem; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uptime-pct { font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap; }
+.uptime-bars { display: flex; gap: 2px; align-items: stretch; flex: 1; min-height: 0; overflow: hidden; }
+.uptime-bar { flex: 1 1 0; border-radius: 2px; min-width: 0; cursor: default; transition: opacity 0.1s; }
+.uptime-bar:hover { opacity: 0.75; }
+.uptime-up { background: #22c55e; }
+.uptime-degraded { background: #f97316; }
+.uptime-down { background: #ef4444; }
+.uptime-nodata { background: rgba(255,255,255,0.08); }
+.uptime-footer { display: flex; justify-content: space-between; font-size: 0.68rem; color: var(--text-dim); flex-shrink: 0; }
+
+/* ── Bash Runner ── */
+.bash-runner-widget { width: 100%; height: 100%; overflow: auto; }
+.bash-output { margin: 0; padding: 0.5rem; font-size: 0.78rem; font-family: var(--font); color: var(--text); white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
 
 /* ── Weather forecast section ── */
 .weather-forecast { margin-top: 12px; }
@@ -341,3 +363,4 @@ body:hover .config-link { opacity: 1; }
   border-radius: 20px;
 }
 .widget-type-id { font-size: 0.72rem; color: var(--text-dim); display: block; }
+

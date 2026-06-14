@@ -21,6 +21,7 @@ type WidgetInstance struct {
 	Enabled  bool              `json:"enabled"`
 	Settings map[string]string `json:"settings"`
 	Grid     GridPosition      `json:"grid"`
+	DataDir  string            `json:"-"` // runtime only: persistent storage dir for this instance
 }
 
 type GridPosition struct {

@@ -7,8 +7,9 @@ let activeWidgetID = null;
 document.addEventListener('DOMContentLoaded', function () {
   grid = GridStack.init({
     column: 12,
-    cellHeight: 80,
+    cellHeight: 40,
     animate: true,
+    minRow: 2,
     resizable: { handles: 'se' },
     draggable: { handle: '.widget-header' },
   }, '#dashboard-grid');

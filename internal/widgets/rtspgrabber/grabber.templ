@@ -1,0 +1,40 @@
+package rtspgrabber
+
+templ rtspContent(instID string, refreshMs string) {
+	<div class="rtsp-grabber-widget">
+		<img
+			id={ "rtsp-img-" + instID }
+			src={ "/widgets/" + instID + "/frame" }
+			data-wid={ instID }
+			data-ms={ refreshMs }
+			style="width:100%;height:100%;object-fit:fill"
+			alt="RTSP"
+		/>
+	</div>
+	<script>
+		(function() {
+			document.querySelectorAll('img[data-wid][data-ms]:not([data-rtsp])').forEach(function(img) {
+				img.setAttribute('data-rtsp', '1');
+				var id = img.getAttribute('data-wid');
+				var ms = parseInt(img.getAttribute('data-ms')) || 1000;
+				function next() {
+					if (!document.contains(img)) return;
+					var fresh = new Image();
+					fresh.onload = function() {
+						img.src = fresh.src;
+						setTimeout(next, ms);
+					};
+					fresh.onerror = function() {
+						setTimeout(next, ms);
+					};
+					fresh.src = '/widgets/' + id + '/frame?t=' + Date.now();
+				}
+				setTimeout(next, ms);
+			});
+		})();
+	</script>
+}
+
+templ rtspError(msg string) {
+	<div class="widget-error">{ msg }</div>
+}
