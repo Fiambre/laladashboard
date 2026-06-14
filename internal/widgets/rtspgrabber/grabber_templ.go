@@ -29,20 +29,20 @@ func rtspStream(instID string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"rtsp-grabber-widget\"><img src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"rtsp-grabber-widget\" data-webrtc-id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue("/widgets/" + instID + "/frame")
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(instID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 6, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 4, Col: 31}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" style=\"width:100%;height:100%;object-fit:fill\" alt=\"Camera\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><video style=\"width:100%;height:100%;object-fit:fill\" autoplay muted playsinline></video><script>(function(){var c=document.currentScript?document.currentScript.parentElement:null;if(!c)return;var id=c.dataset.webrtcId;if(!id||c.dataset.webrtcInit)return;c.dataset.webrtcInit='1';var v=c.querySelector('video');function start(){var pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});pc.addTransceiver('video',{direction:'recvonly'});pc.ontrack=function(e){v.srcObject=e.streams[0];};pc.onconnectionstatechange=function(){if(pc.connectionState==='failed'||pc.connectionState==='disconnected'){pc.close();setTimeout(start,3000);}};pc.createOffer().then(function(o){return pc.setLocalDescription(o).then(function(){return o;});}).then(function(o){return fetch('/widgets/'+id+'/webrtc',{method:'POST',body:o.sdp,headers:{'Content-Type':'application/sdp'}});}).then(function(r){if(!r.ok)throw r.status;return r.text();}).then(function(s){return pc.setRemoteDescription({type:'answer',sdp:s});}).catch(function(){try{pc.close();}catch(_){}setTimeout(start,3000);});}start();})();</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -83,7 +83,7 @@ func rtspDirect(streamURL string, kind directKind) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(streamURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 17, Col: 19}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 46, Col: 19}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -101,7 +101,7 @@ func rtspDirect(streamURL string, kind directKind) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(streamURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 26, Col: 19}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 55, Col: 19}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -148,7 +148,7 @@ func rtspError(msg string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 35, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/widgets/rtspgrabber/grabber.templ`, Line: 63, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {

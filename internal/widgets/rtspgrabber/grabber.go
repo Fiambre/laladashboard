@@ -1,12 +1,15 @@
 package rtspgrabber
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -37,194 +40,130 @@ func detectDirectKind(u string) directKind {
 	return directMJPEG
 }
 
-// ── Per-stream FFmpeg worker ──────────────────────────────────────────────────
+// ── go2rtc subprocess manager ─────────────────────────────────────────────────
 
-type subscriber struct {
-	ch chan []byte
+type go2rtcManager struct {
+	mu      sync.Mutex
+	baseURL string
+	running bool
 }
 
-type frameWorker struct {
-	mu       sync.Mutex
-	frame    []byte     // most recent JPEG
-	subs     []*subscriber
-	lastUsed time.Time
-	cancel   context.CancelFunc
-	running  bool
-	srcURL   string
-}
+var g2m = &go2rtcManager{}
 
-var (
-	workersMu sync.Mutex
-	workerMap = map[string]*frameWorker{}
-)
+func (m *go2rtcManager) ensure(binPath, apiPort string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-func getWorker(srcURL string) *frameWorker {
-	workersMu.Lock()
-	fw, ok := workerMap[srcURL]
-	if !ok {
-		fw = &frameWorker{srcURL: srcURL, lastUsed: time.Now()}
-		workerMap[srcURL] = fw
+	if m.running {
+		return nil
 	}
-	workersMu.Unlock() // release before locking fw.mu to avoid deadlock with run()
 
-	fw.mu.Lock()
-	fw.lastUsed = time.Now()
-	if !fw.running {
-		fw.running = true
-		ctx, cancel := context.WithCancel(context.Background())
-		fw.cancel = cancel
-		go fw.run(ctx)
+	base := "http://127.0.0.1:" + apiPort
+
+	// Already running (e.g. started externally)
+	if pingGo2rtc(base) {
+		m.baseURL = base
+		m.running = true
+		return nil
 	}
-	fw.mu.Unlock()
-	return fw
-}
 
-func (fw *frameWorker) subscribe() *subscriber {
-	sub := &subscriber{ch: make(chan []byte, 1)}
-	fw.mu.Lock()
-	// Send latest frame immediately so the subscriber doesn't wait for the next one.
-	if fw.frame != nil {
-		sub.ch <- fw.frame
+	cfgPath := filepath.Join(os.TempDir(), "lala-go2rtc.yaml")
+	cfg := fmt.Sprintf("api:\n  listen: ':%s'\n  origin: '*'\nwebrtc:\n  ice_servers:\n    - urls: [stun:stun.l.google.com:19302]\n", apiPort)
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0600); err != nil {
+		return fmt.Errorf("go2rtc config: %w", err)
 	}
-	fw.subs = append(fw.subs, sub)
-	fw.mu.Unlock()
-	return sub
-}
 
-func (fw *frameWorker) unsubscribe(sub *subscriber) {
-	fw.mu.Lock()
-	for i, s := range fw.subs {
-		if s == sub {
-			fw.subs = append(fw.subs[:i], fw.subs[i+1:]...)
-			break
-		}
-	}
-	fw.mu.Unlock()
-}
-
-func (fw *frameWorker) broadcast(frame []byte) {
-	fw.mu.Lock()
-	fw.frame = frame
-	fw.lastUsed = time.Now()
-	for _, s := range fw.subs {
-		select {
-		case s.ch <- frame:
-		default:
-			// Subscriber is slow — overwrite with latest frame.
-			select {
-			case <-s.ch:
-			default:
-			}
-			s.ch <- frame
-		}
-	}
-	fw.mu.Unlock()
-}
-
-const idleTimeout = 60 * time.Second
-const ffmpegBackoff = 3 * time.Second
-
-func (fw *frameWorker) run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Stop if no subscribers and idle for a while.
-		fw.mu.Lock()
-		idle := len(fw.subs) == 0 && time.Since(fw.lastUsed) > idleTimeout
-		fw.mu.Unlock()
-		if idle {
-			fw.mu.Lock()
-			fw.running = false
-			fw.mu.Unlock()
-			workersMu.Lock()
-			delete(workerMap, fw.srcURL)
-			workersMu.Unlock()
-			return
-		}
-
-		fw.runFFmpeg(ctx)
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(ffmpegBackoff):
-		}
-	}
-}
-
-var soiMarker = []byte{0xFF, 0xD8}
-var eoiMarker = []byte{0xFF, 0xD9}
-
-func (fw *frameWorker) runFFmpeg(ctx context.Context) {
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-hide_banner", "-loglevel", "error",
-		"-rtsp_transport", "tcp",
-		"-i", fw.srcURL,
-		"-f", "mjpeg",
-		"-r", "2",
-		"-q:v", "15",
-		"pipe:1",
-	)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return
-	}
+	cmd := exec.Command(binPath, "-config", cfgPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return
+		return fmt.Errorf("go2rtc start (%q): %w", binPath, err)
 	}
-	fw.parseMJPEGStream(ctx, stdout)
-	cmd.Wait() //nolint:errcheck
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if pingGo2rtc(base) {
+			m.baseURL = base
+			m.running = true
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	cmd.Process.Kill() //nolint:errcheck
+	return fmt.Errorf("go2rtc did not respond within 5s (binary: %q)", binPath)
 }
 
-func (fw *frameWorker) parseMJPEGStream(ctx context.Context, r io.Reader) {
-	buf := make([]byte, 0, 512*1024)
-	tmp := make([]byte, 32*1024)
+func pingGo2rtc(baseURL string) bool {
+	c := &http.Client{Timeout: 400 * time.Millisecond}
+	resp, err := c.Get(baseURL + "/api")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode < 500
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		n, err := r.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-			for {
-				soiIdx := bytes.Index(buf, soiMarker)
-				if soiIdx < 0 {
-					buf = buf[:0]
-					break
-				}
-				if soiIdx > 0 {
-					buf = buf[soiIdx:]
-				}
-				eoiIdx := bytes.Index(buf[2:], eoiMarker)
-				if eoiIdx < 0 {
-					if len(buf) > 8*1024*1024 {
-						buf = buf[:0]
-					}
-					break
-				}
-				end := 2 + eoiIdx + 2
-				frame := make([]byte, end)
-				copy(frame, buf[:end])
-				buf = buf[end:]
-				fw.broadcast(frame)
-			}
-		}
-		if err != nil {
-			return
+// ── SDP rewriting ─────────────────────────────────────────────────────────────
+
+// Docker bridge networks whose IPs should be replaced with the actual host IP
+// so the browser can reach go2rtc's WebRTC port directly.
+var dockerNets []*net.IPNet
+
+func init() {
+	for _, cidr := range []string{"172.16.0.0/12", "127.0.0.0/8"} {
+		_, n, _ := net.ParseCIDR(cidr)
+		if n != nil {
+			dockerNets = append(dockerNets, n)
 		}
 	}
+}
+
+func isDockerIP(ip net.IP) bool {
+	for _, n := range dockerNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// rewriteSDPCandidates replaces Docker-internal IPs in ICE candidate lines
+// with hostIP so the browser can reach the media port from outside Docker.
+func rewriteSDPCandidates(sdp, hostIP string) string {
+	lines := strings.Split(sdp, "\n")
+	for i, line := range lines {
+		clean := strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(clean, "a=candidate:") {
+			continue
+		}
+		// Format: a=candidate:<f> <c> <proto> <prio> <ip> <port> typ <type> [...]
+		fields := strings.Fields(clean)
+		if len(fields) < 8 {
+			continue
+		}
+		ip := net.ParseIP(fields[4])
+		if ip != nil && isDockerIP(ip) {
+			fields[4] = hostIP
+			lines[i] = strings.Join(fields, " ")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func extractHostIP(host string) string {
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		return host
+	}
+	return h
 }
 
 // ── Widget ────────────────────────────────────────────────────────────────────
 
-type RTSPGrabberWidget struct{}
+type RTSPGrabberWidget struct {
+	registered sync.Map // key: go2rtcBaseURL+"|"+name → struct{}
+}
 
 func (w *RTSPGrabberWidget) TypeID() string      { return "rtsp-grabber" }
 func (w *RTSPGrabberWidget) DisplayName() string { return "Cámara RTSP / HTTP" }
@@ -243,47 +182,74 @@ func (w *RTSPGrabberWidget) RenderContent(_ context.Context, inst widgets.Widget
 	case "http":
 		return rtspDirect(streamURL, detectDirectKind(streamURL))
 	default: // "rtsp"
-		getWorker(streamURL) // warm up the worker
+		binPath := inst.Setting("go2rtc_bin", "go2rtc")
+		apiPort := inst.Setting("go2rtc_port", "1984")
+		if err := g2m.ensure(binPath, apiPort); err != nil {
+			return rtspError(err.Error())
+		}
+		go w.ensureStream(g2m.baseURL, inst.ID, streamURL)
 		return rtspStream(inst.ID)
 	}
 }
 
-// ServeFrame streams MJPEG frames from the persistent FFmpeg worker.
-func (w *RTSPGrabberWidget) ServeFrame(rw http.ResponseWriter, r *http.Request, inst widgets.WidgetInstance) {
-	streamURL := inst.Setting("stream_url", inst.Setting("rtsp_url", ""))
-	if streamURL == "" {
-		http.Error(rw, "stream_url no configurada", http.StatusServiceUnavailable)
+// ServeWebRTC proxies the WebRTC SDP exchange with go2rtc and rewrites
+// Docker-internal ICE candidate IPs with the real host IP from r.Host.
+func (w *RTSPGrabberWidget) ServeWebRTC(rw http.ResponseWriter, r *http.Request, inst widgets.WidgetInstance) {
+	g2m.mu.Lock()
+	running := g2m.running
+	baseURL := g2m.baseURL
+	g2m.mu.Unlock()
+
+	if !running {
+		http.Error(rw, "go2rtc no está corriendo", http.StatusServiceUnavailable)
 		return
 	}
 
-	fw := getWorker(streamURL)
-	sub := fw.subscribe()
-	defer fw.unsubscribe(sub)
-
-	rw.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-	rw.Header().Set("Cache-Control", "no-cache")
-	rw.WriteHeader(http.StatusOK)
-
-	flusher, canFlush := rw.(http.Flusher)
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case frame, ok := <-sub.ch:
-			if !ok {
-				return
-			}
-			fmt.Fprintf(rw, "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", len(frame))
-			if _, err := rw.Write(frame); err != nil {
-				return
-			}
-			rw.Write([]byte("\r\n")) //nolint:errcheck
-			if canFlush {
-				flusher.Flush()
-			}
-		}
+	streamURL := inst.Setting("stream_url", inst.Setting("rtsp_url", ""))
+	if streamURL != "" {
+		w.ensureStream(baseURL, inst.ID, streamURL)
 	}
+
+	offerSDP, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(rw, "error leyendo SDP offer", http.StatusBadRequest)
+		return
+	}
+
+	targetURL := baseURL + "/api/webrtc?src=" + url.QueryEscape(inst.ID)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, targetURL,
+		strings.NewReader(string(offerSDP)))
+	if err != nil {
+		http.Error(rw, "internal error", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/sdp")
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		http.Error(rw, "go2rtc unavailable: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	answerBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(rw, "error leyendo SDP answer", http.StatusInternalServerError)
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		rw.WriteHeader(resp.StatusCode)
+		rw.Write(answerBytes) //nolint:errcheck
+		return
+	}
+
+	hostIP := extractHostIP(r.Host)
+	answer := rewriteSDPCandidates(string(answerBytes), hostIP)
+
+	rw.Header().Set("Content-Type", "application/sdp")
+	rw.WriteHeader(http.StatusOK)
+	rw.Write([]byte(answer)) //nolint:errcheck
 }
 
 func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
@@ -303,5 +269,40 @@ func (w *RTSPGrabberWidget) ConfigSchema() []widgets.ConfigField {
 			Required:    true,
 			Placeholder: "rtsp://user:pass@192.168.1.10:554/stream1",
 		},
+		{
+			Key:     "go2rtc_bin",
+			Label:   "Binario go2rtc",
+			Type:    "text",
+			Default: "go2rtc",
+		},
+		{
+			Key:     "go2rtc_port",
+			Label:   "Puerto API go2rtc",
+			Type:    "number",
+			Default: "1984",
+		},
+	}
+}
+
+// ensureStream registers the RTSP stream with go2rtc so it can serve it via WebRTC.
+// go2rtc handles H264 natively (no transcoding) when the client requests WebRTC.
+func (w *RTSPGrabberWidget) ensureStream(baseURL, name, src string) {
+	key := baseURL + "|" + name
+	if _, ok := w.registered.Load(key); ok {
+		return
+	}
+	apiURL := fmt.Sprintf("%s/api/streams?name=%s&src=%s",
+		baseURL, url.QueryEscape(name), url.QueryEscape(src))
+	req, err := http.NewRequest(http.MethodPut, apiURL, nil)
+	if err != nil {
+		return
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode < 300 {
+		w.registered.Store(key, struct{}{})
 	}
 }

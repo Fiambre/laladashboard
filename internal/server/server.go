@@ -41,6 +41,7 @@ func New(store *config.Store, reg *registry.Registry, loader *moduleloader.Loade
 
 	r.Get("/widgets/{widgetID}/content", handlers.WidgetContent(store, reg))
 	r.Get("/widgets/{widgetID}/frame", handlers.WidgetFrame(store, reg))
+	r.Post("/widgets/{widgetID}/webrtc", handlers.WidgetWebRTC(store, reg))
 
 	return r
 }
