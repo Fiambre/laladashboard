@@ -124,7 +124,7 @@ func (w *RTSPGrabberWidget) Render(ctx context.Context, inst widgets.WidgetInsta
 }
 
 func (w *RTSPGrabberWidget) RenderContent(ctx context.Context, inst widgets.WidgetInstance) templ.Component {
-	streamURL := inst.Setting("stream_url", "")
+	streamURL := inst.Setting("stream_url", inst.Setting("rtsp_url", ""))
 	if streamURL == "" {
 		return rtspError("Configura la URL del stream")
 	}
