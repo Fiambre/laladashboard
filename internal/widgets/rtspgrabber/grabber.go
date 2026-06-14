@@ -163,7 +163,7 @@ func (w *RTSPGrabberWidget) ServeFrame(rw http.ResponseWriter, r *http.Request, 
 		w.ensureStream(baseURL, inst.ID, src)
 	}
 
-	mjpegURL := fmt.Sprintf("%s/%s/mjpeg", baseURL, url.PathEscape(inst.ID))
+	mjpegURL := fmt.Sprintf("%s/api/stream.mjpeg?src=%s", baseURL, url.QueryEscape(inst.ID))
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, mjpegURL, nil)
 	if err != nil {
 		http.Error(rw, "internal error", http.StatusInternalServerError)
