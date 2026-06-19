@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    image: ghcr.io/fiambre/laladashboard:latest
+    ports:
+      - "8090:8080"
+      - "8555:8555/udp"
+      - "8555:8555/tcp"
+    volumes:
+      - ./config:/app/config
+      - ./modules:/app/modules
+      - ./data:/app/data
+    restart: unless-stopped

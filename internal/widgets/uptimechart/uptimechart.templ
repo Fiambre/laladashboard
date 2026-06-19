@@ -2,8 +2,16 @@ package uptimechart
 
 import "strconv"
 
-templ uptimeContent(label string, bars []barInfo, uptimePct string, days int) {
-	<div class="uptime-widget">
+templ uptimeContent(label string, bars []barInfo, uptimePct string, days int, widgetID string, selfPollSec int) {
+	<div
+		class="uptime-widget"
+		if selfPollSec > 0 {
+			hx-get={ "/widgets/" + widgetID + "/content" }
+			hx-trigger={ "every " + strconv.Itoa(selfPollSec) + "s" }
+			hx-swap="innerHTML"
+			hx-target={ "#widget-" + widgetID }
+		}
+	>
 		<div class="uptime-header">
 			<span class="uptime-label">{ label }</span>
 			<span class="uptime-pct">{ uptimePct } Uptime</span>

@@ -38,13 +38,12 @@ type persistedSlot struct {
 }
 
 type uptimeWorker struct {
-	mu       sync.RWMutex
-	slots    []slot
-	days     int
-	dataDir  string
-	lastUsed time.Time
-	active   bool
-	cancel   context.CancelFunc
+	mu      sync.RWMutex
+	slots   []slot
+	days    int
+	dataDir string
+	active  bool
+	cancel  context.CancelFunc
 }
 
 func (w *UptimeChartWidget) TypeID() string      { return "uptime-chart" }
@@ -70,6 +69,13 @@ func (w *UptimeChartWidget) RenderContent(ctx context.Context, inst widgets.Widg
 		intervalSec = n
 	}
 
+	// If the outer dashboard wrapper has no poll_seconds, the widget
+	// content includes its own HTMX refresh so data stays current.
+	selfPollSec := 0
+	if p := inst.Setting("poll_seconds", ""); p == "" || p == "0" {
+		selfPollSec = intervalSec
+	}
+
 	worker := w.touchWorker(inst.ID, url, days, intervalSec, inst.DataDir)
 
 	worker.mu.RLock()
@@ -78,7 +84,7 @@ func (w *UptimeChartWidget) RenderContent(ctx context.Context, inst widgets.Widg
 	worker.mu.RUnlock()
 
 	bars, uptimePct := buildBars(slots, days)
-	return uptimeContent(label, bars, uptimePct, days)
+	return uptimeContent(label, bars, uptimePct, days, inst.ID, selfPollSec)
 }
 
 func (w *UptimeChartWidget) ConfigSchema() []widgets.ConfigField {
@@ -87,17 +93,18 @@ func (w *UptimeChartWidget) ConfigSchema() []widgets.ConfigField {
 		{Key: "label", Label: "Etiqueta", Type: "text", Placeholder: "Mi Servicio"},
 		{Key: "days", Label: "Días a mostrar", Type: "number", Default: "60"},
 		{Key: "check_interval_seconds", Label: "Intervalo de chequeo (seg)", Type: "number", Default: "300"},
+		{Key: "poll_seconds", Label: "Refresco UI (seg)", Type: "number", Default: "300"},
 	}
 }
 
 func (w *UptimeChartWidget) touchWorker(instID, url string, days, intervalSec int, dataDir string) *uptimeWorker {
-	val, _ := w.workers.LoadOrStore(instID, &uptimeWorker{days: days, dataDir: dataDir, lastUsed: time.Now()})
+	val, _ := w.workers.LoadOrStore(instID, &uptimeWorker{days: days, dataDir: dataDir})
 	worker := val.(*uptimeWorker)
 
 	worker.mu.Lock()
-	worker.lastUsed = time.Now()
 	if !worker.active {
 		worker.active = true
+		worker.loadFromDisk()
 		ctx, cancel := context.WithCancel(context.Background())
 		worker.cancel = cancel
 		worker.mu.Unlock()
@@ -124,16 +131,12 @@ func (fw *uptimeWorker) currentSlot() *slot {
 	return &fw.slots[len(fw.slots)-1]
 }
 
-func (fw *uptimeWorker) run(ctx context.Context, url string, days, intervalSec int) {
+func (fw *uptimeWorker) run(ctx context.Context, url string, _ int, intervalSec int) {
 	defer func() {
 		fw.mu.Lock()
 		fw.active = false
 		fw.mu.Unlock()
 	}()
-
-	fw.mu.Lock()
-	fw.loadFromDisk()
-	fw.mu.Unlock()
 
 	fw.doCheck(ctx, url)
 
@@ -145,12 +148,6 @@ func (fw *uptimeWorker) run(ctx context.Context, url string, days, intervalSec i
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			fw.mu.RLock()
-			idle := time.Since(fw.lastUsed) > 2*time.Hour
-			fw.mu.RUnlock()
-			if idle {
-				return
-			}
 			fw.doCheck(ctx, url)
 		}
 	}
