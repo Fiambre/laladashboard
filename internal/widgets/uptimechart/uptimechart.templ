@@ -2,7 +2,7 @@ package uptimechart
 
 import "strconv"
 
-templ uptimeContent(label string, bars []barInfo, uptimePct string, days int, widgetID string, selfPollSec int) {
+templ uptimeContent(label string, bars []barInfo, uptimePct string, streak string, days int, widgetID string, selfPollSec int) {
 	<div
 		class="uptime-widget"
 		if selfPollSec > 0 {
@@ -14,7 +14,12 @@ templ uptimeContent(label string, bars []barInfo, uptimePct string, days int, wi
 	>
 		<div class="uptime-header">
 			<span class="uptime-label">{ label }</span>
-			<span class="uptime-pct">{ uptimePct } Uptime</span>
+			<span class="uptime-pct">
+				{ uptimePct } Uptime
+				if streak != "" && streak != "0h" {
+					<span class="uptime-streak">· { streak } sin caídas</span>
+				}
+			</span>
 		</div>
 		<div class="uptime-bars">
 			for _, bar := range bars {

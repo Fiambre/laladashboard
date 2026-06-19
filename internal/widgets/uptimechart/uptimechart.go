@@ -84,7 +84,8 @@ func (w *UptimeChartWidget) RenderContent(ctx context.Context, inst widgets.Widg
 	worker.mu.RUnlock()
 
 	bars, uptimePct := buildBars(slots, days)
-	return uptimeContent(label, bars, uptimePct, days, inst.ID, selfPollSec)
+	streak := calcStreak(slots)
+	return uptimeContent(label, bars, uptimePct, streak, days, inst.ID, selfPollSec)
 }
 
 func (w *UptimeChartWidget) ConfigSchema() []widgets.ConfigField {
@@ -270,10 +271,52 @@ func buildBars(slots []slot, days int) ([]barInfo, string) {
 		bars[i] = barInfo{Color: color, Title: title}
 	}
 
-	uptimePct := "—"
-	if totalChecks > 0 {
-		uptimePct = fmt.Sprintf("%.4f%%", float64(totalUp)/float64(totalChecks)*100)
+	var uptimePct string
+	switch {
+	case totalChecks == 0:
+		uptimePct = "—"
+	case totalUp == totalChecks:
+		uptimePct = "100%"
+	default:
+		uptimePct = fmt.Sprintf("%.2f%%", float64(totalUp)/float64(totalChecks)*100)
 	}
 
 	return bars, uptimePct
+}
+
+// calcStreak returns how many hours the service has been continuously green
+// (≥95% uptime per day). Returns "" if there is no data.
+func calcStreak(slots []slot) string {
+	now := time.Now()
+
+	// Find the most recent day that was not fully green.
+	lastBadIdx := -1
+	for i := len(slots) - 1; i >= 0; i-- {
+		s := slots[i]
+		if s.total == 0 {
+			continue
+		}
+		if float64(s.up)/float64(s.total)*100 < 95 {
+			lastBadIdx = i
+			break
+		}
+	}
+
+	var streakStart time.Time
+	if lastBadIdx == -1 {
+		// All recorded days are green — streak starts at oldest data point.
+		for _, s := range slots {
+			if s.total > 0 {
+				streakStart = s.dayStart
+				break
+			}
+		}
+	} else {
+		streakStart = slots[lastBadIdx].dayStart.AddDate(0, 0, 1)
+	}
+
+	if streakStart.IsZero() || streakStart.After(now) {
+		return "0h"
+	}
+	return fmt.Sprintf("%dh", int(now.Sub(streakStart).Hours()))
 }
