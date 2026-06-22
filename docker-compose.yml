@@ -1,6 +1,7 @@
 services:
   dashboard:
     image: ghcr.io/fiambre/laladashboard:latest
+    init: true
     ports:
       - "8090:8080"
       - "8555:8555/udp"
